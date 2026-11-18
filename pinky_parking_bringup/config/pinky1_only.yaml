@@ -1,0 +1,4 @@
+# 지도 만들기용: pinky1 한 대만 원점에 띄운다 (README.md의 "지도 만들기")
+world_name: pinky_factory.world
+robots:
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0}

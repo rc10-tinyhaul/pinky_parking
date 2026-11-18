@@ -1,0 +1,45 @@
+# pinky_parking_bringup
+
+시뮬레이션 전체를 띄우는 launch, 로봇 목록, 도구 명령입니다.
+
+## `launch/sim.launch.py`
+
+로봇 목록을 읽어 Gazebo 월드와 로봇(`pinky_parking_gazebo`)을 띄우고, `nav_delay`초 뒤 로봇별 Nav2(`pinky_parking_navigation`)를 띄웁니다.
+
+| 인자 | 기본값 | 설명 |
+|---|---|---|
+| `robots` | `config/robots.yaml` | 로봇 목록 |
+| `world_name` | `robots.yaml`의 `world_name` | 월드 파일 이름 |
+| `map` | `pinky_parking_navigation/maps/factory.yaml` | 지도 |
+| `gui` | `true` | Gazebo 창 |
+| `headless` | `false` | 화면 없는 환경용 |
+| `camera` | `true` | 카메라 영상 브리지 |
+| `nav` | `true` | Nav2 실행 |
+| `nav_delay` | `15.0` | Nav2 시작 전 대기 [s] |
+
+## 로봇 목록 (`config/robots.yaml`)
+
+```yaml
+world_name: pinky_factory.world
+robots:
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0}
+  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159}
+```
+
+| 필드 | 설명 |
+|---|---|
+| `name` | 로봇 이름 |
+| `domain_id` | 이 로봇의 `ROS_DOMAIN_ID` |
+| `x`, `y` [m], `yaw` [rad] | 스폰 위치이자 AMCL 초기 위치 |
+
+`config/pinky1_only.yaml`은 지도 작성용(pinky1 한 대)입니다.
+
+## 실행 파일
+
+`ROS_DOMAIN_ID`로 대상 로봇을 지정합니다(pinky1 = 11, pinky2 = 12).
+
+| 명령 | 설명 |
+|---|---|
+| `send_goal X Y [YAW] [--timeout S]` | `map` 좌표 목표를 보내고 결과를 출력합니다. YAW [rad] 기본 0, `--timeout` 기본 120초. 성공하면 종료 코드 0 |
+| `auto_explore [초]` | 지도 작성용 자동 탐색. 기본 240초 |
+| `sim_speed [초]` | 시뮬레이션 속도(1.00 = 실시간)와 `/scan` 주기. 기본 8초 |
