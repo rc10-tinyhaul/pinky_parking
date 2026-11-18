@@ -1,0 +1,24 @@
+# 사용법은 README.md 참고
+#   GPU 없이:    docker compose up -d
+#   NVIDIA GPU:  docker compose -f compose.yaml -f compose.gpu.yaml up -d
+#   터미널:      docker compose exec sim bash
+#   끝내기:      docker compose down
+#
+# 네트워크는 호스트와 공유하지 않는다. 시뮬레이션의 ROS 2 통신이 컨테이너 안에만 머물러,
+# 같은 네트워크의 실물 로봇(같은 ROS_DOMAIN_ID)과 섞이지 않는다.
+services:
+  sim:
+    image: pinky_parking:jazzy
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:                 # 컨테이너 사용자를 호스트 사용자와 같은 UID/GID 로 (run.sh 가 넘긴다)
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    command: sleep infinity
+    environment:
+      - DISPLAY=${DISPLAY:-}
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw      # Gazebo·RViz 창
+      - .:/ws/src/pinky_parking               # 저장소 연결: 고친 코드·저장한 지도가 호스트에 남음

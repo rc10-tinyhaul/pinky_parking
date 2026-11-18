@@ -1,0 +1,16 @@
+# NVIDIA GPU 사용 (호스트에 NVIDIA Container Toolkit 필요)
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d
+services:
+  sim:
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Gazebo·RViz 창도 NVIDIA로 그린다 (Intel + NVIDIA 노트북의 PRIME offload)
+      - __NV_PRIME_RENDER_OFFLOAD=1
+      - __GLX_VENDOR_LIBRARY_NAME=nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
