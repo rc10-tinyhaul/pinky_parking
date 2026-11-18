@@ -1,0 +1,6 @@
+# 외부 의존 저장소 (vcstool). 작업공간 src/ 에서:  vcs import < pinky_parking/pinky_parking.repos
+repositories:
+  pinky_pro:
+    type: git
+    url: https://github.com/pinklab-art/pinky_pro.git
+    version: 014a09f289e6988894fbffde2624fdb1e257815b
