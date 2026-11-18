@@ -6,6 +6,8 @@
 #
 # 네트워크는 호스트와 공유하지 않는다. 시뮬레이션의 ROS 2 통신이 컨테이너 안에만 머물러,
 # 같은 네트워크의 실물 로봇(같은 ROS_DOMAIN_ID)과 섞이지 않는다.
+name: pinky_parking     # 폴더 이름과 상관없이 같은 프로젝트(컨테이너) 이름을 쓴다
+
 services:
   sim:
     image: pinky_parking:jazzy
