@@ -48,6 +48,7 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 
 | 패키지 | 맡는 일 | 다른 패키지와 주고받는 것 |
 |---|---|---|
+| `pinky_parking_description` | 차량 모델(기본, 트레일러) | `config/vehicles.yaml`, `vehicles.vehicle_urdf()` |
 | `pinky_parking_gazebo` | 월드(경기장), 로봇 스폰, 브리지 | `world.launch.py`, `spawn_robot.launch.py`, `worlds/`, 각 도메인의 `/scan` `/odom` `/cmd_vel` `/tf` `/camera/*` |
 | `pinky_parking_navigation` | 로봇별 Nav2, 지도, Nav2 파라미터 | `robot_nav.launch.py`, `maps/`, 각 도메인의 Nav2 액션(`navigate_to_pose`, `follow_waypoints`) |
 | `pinky_parking_bringup` | 로봇 목록, 전체 실행 launch, 도구 명령, 통합 | `config/robots.yaml`, `launch/sim.launch.py` |
