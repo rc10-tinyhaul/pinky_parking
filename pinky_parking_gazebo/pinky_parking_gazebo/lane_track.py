@@ -20,8 +20,8 @@ TAPE_HEIGHT = 0.001     # 테이프 두께. 충돌은 없고 보이기만 한다
 
 
 def load_track(path=None):
-    share = Path(get_package_share_directory('pinky_parking_gazebo'))
-    path = path or share / 'config/lane_track.yaml'
+    if path is None:
+        path = Path(get_package_share_directory('pinky_parking_gazebo')) / 'config/lane_track.yaml'
     return yaml.safe_load(Path(path).read_text())
 
 
