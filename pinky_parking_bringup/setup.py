@@ -29,5 +29,6 @@ setup(
         'send_goal = pinky_parking_bringup.send_goal:main',
         'auto_explore = pinky_parking_bringup.auto_explore:main',
         'sim_speed = pinky_parking_bringup.sim_speed:main',
+        'cmd_vel_watchdog = pinky_parking_bringup.cmd_vel_watchdog:main',
     ]},
 )
