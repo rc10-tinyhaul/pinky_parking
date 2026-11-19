@@ -1,129 +1,172 @@
 # pinky_parking_control
 
-관제실 패키지입니다. 로봇에게 **행동 단위**(이동, 주차, 출차, 주행, 정지)로 명령하는 API와, 브라우저에서 로봇을 보고 움직이는 **대시보드**가 들어 있습니다.
+관제센터 패키지입니다. 기획(`docs/plan.md`)의 시연에 맞춰 두 로봇에게 **행동 단위**로 명령하는 API와, 게임 조종석처럼 다루는 **관제센터 화면**이 들어 있습니다.
 
 ## 한눈에 보기
 
 ```
- 브라우저 (대시보드)                 관제 서버 (control_server, 프로세스 하나)
- ┌─────────────────┐   HTTP 명령    ┌──────────────────────────────────────┐
- │ 지도 · 로봇 카드 │ ────────────▶ │ FastAPI                              │
- │ 버튼 · 작업 기록 │ ◀──────────── │   ├─ 도메인 11 연결 ── pinky1 의 Nav2 │
- └─────────────────┘  WebSocket    │   └─ 도메인 12 연결 ── pinky2 의 Nav2 │
-                      초당 10번 상태 └──────────────────────────────────────┘
+ 브라우저 (관제센터 화면)              관제 서버 (control_server, 프로세스 하나)
+ ┌──────────────────────┐   명령      ┌──────────────────────────────────────┐
+ │ 유닛 · 경기장 · 미션  │ ─────────▶ │ FastAPI + 시나리오 실행기               │
+ │ 명령 막대 · 조이스틱  │ ◀───────── │   ├─ 도메인 11 연결 ── A pinky1 의 Nav2 │
+ └──────────────────────┘  상태 10Hz  │   └─ 도메인 12 연결 ── B pinky2 의 Nav2 │
+                                      └──────────────────────────────────────┘
 ```
 
 | 용어 | 쉬운 뜻 |
 |---|---|
-| API | 프로그램끼리 주고받는 "주문서 양식". 대시보드 버튼도 결국 이 주문서를 보냅니다 |
-| WebSocket | 서버가 화면에 계속 새 소식을 밀어 주는 "열린 전화선". 새로고침 없이 로봇이 움직여 보입니다 |
-| 도메인(`ROS_DOMAIN_ID`) | 로봇마다 따로 쓰는 "무전 채널". pinky1 = 11번, pinky2 = 12번 |
-| Nav2 | 로봇이 목표까지 길을 찾아 가게 해 주는 ROS 2 주행 프로그램 |
+| API | 프로그램끼리 주고받는 "주문서 양식". 화면 버튼도 결국 이 주문서를 보냅니다 |
+| 유닛 A, B | 시연에서 부르는 이름. A = pinky1, B = pinky2 (`config/scenario.yaml`의 `callsigns`) |
+| 차종 T00 · T10 · T15 | 트레일러 없음(전체 140 mm) · 10 cm(240 mm) · 15 cm(290 mm) |
+| 도메인(`ROS_DOMAIN_ID`) | 로봇마다 따로 쓰는 "무전 채널". pinky1 = 11, pinky2 = 12 |
+| Nav2 | 로봇이 목표까지 길을 찾아 가게 하는 ROS 2 주행 프로그램 |
 
-**왜 이렇게 만들었나요?** Nav2에 보내는 명령(액션)은 도메인을 건너가지 못합니다. 그래서 서버 하나가 로봇마다 그 로봇의 채널(도메인)에 직접 들어가 명령합니다. `domain_bridge`(#13) 없이도 지금 바로 동작합니다.
+**왜 이렇게 만들었나요?** Nav2 명령(액션)은 도메인을 건너가지 못합니다. 그래서 서버 하나가 로봇마다 그 로봇의 채널(도메인)에 직접 들어가 명령합니다. `domain_bridge`(#13) 없이도 지금 바로 동작합니다.
 
-## 실행
+## 배치: 경기장과 공장 월드
 
-아래 명령은 모두 컨테이너 안의 작업공간 루트(`/ws`)에서 실행합니다.
+| 배치 | 언제 | 좌표 |
+|---|---|---|
+| **경기장** | 경기장 월드(#1)가 생긴 뒤, 데모 화면 | `config/arena.yaml` (팀 도면 2000 × 2000 mm를 옮긴 값) |
+| **공장 월드** | 지금 시뮬레이션 (공식 공장 월드) | `slots.yaml`, `route.yaml`, `maps/factory` |
 
-| 순서 | 명령 | 무엇을 하나요 | 왜 필요한가요 |
-|---|---|---|---|
-| 1 | `colcon build --symlink-install --packages-up-to pinky_parking_control` | 이 패키지를 빌드(설치)합니다 | 새 패키지라 처음 한 번은 빌드해야 `ros2`가 찾습니다 |
-| 2 | `source install/setup.bash` | 방금 빌드한 것을 지금 터미널에 알립니다 | 안 하면 "패키지를 찾을 수 없음" 오류가 납니다 |
-| 3 | `ros2 launch pinky_parking_bringup sim.launch.py` | 시뮬레이션(Gazebo, 로봇 두 대, Nav2)을 켭니다 | 명령을 받을 로봇이 있어야 합니다 |
-| 4 | (다른 터미널, `./run.sh`로 들어가서) `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 | API와 대시보드를 제공하는 프로그램입니다 |
-| 5 | 호스트 PC 브라우저에서 `http://localhost:8080` | 대시보드를 엽니다 | `compose.yaml`이 컨테이너의 8080 포트를 호스트에 열어 둡니다 |
+`config/control.yaml`의 `layout: auto`가 `robots.yaml`의 월드 이름을 보고 고릅니다. 이름에 `factory`가 있으면 공장 월드, 아니면 경기장입니다. 그래서 경기장 월드가 생기면 `robots.yaml`만 바꿔도 자동으로 경기장이 됩니다. 직접 고르려면 `--layout arena` 또는 `--layout factory`를 씁니다.
 
-- API 설명서는 `http://localhost:8080/docs`에 있습니다. 화면에서 버튼을 눌러 명령을 직접 시험할 수도 있습니다.
-- 서버 없이 화면만 보려면 `static/index.html`이 있는 폴더를 아무 웹 서버로 열고 주소 끝에 `?demo`를 붙입니다. 모의 로봇이 움직입니다(`?demo=lock`이면 비밀번호 `demo`가 걸린 화면).
+경기장 도면 좌표 (원점 = 트랙 타원 중심, 단위 m, 반시계 주행):
 
-## 팀 비밀번호와 다른 PC에서 열기
+| 이름 | 위치 | 비고 |
+|---|---|---|
+| 1번 트랙 (안쪽) | 중심선 반지름 0.405, 직선 0.6 | T00 |
+| 2번 트랙 (바깥쪽) | 중심선 반지름 0.595 | T10 · T15 |
+| 주차 칸 10, 11 | (0, −0.15), (0, +0.15), 190 × 300 mm | 마커 10, 11 |
+| 주유구역 20 | (−0.995, −0.195), 190 × 350 mm | 마커 20 |
+| 대기선 30 | y = 0.045, 대기 자리 (−0.995, 0.17) | 마커 30 |
 
-- 환경변수 `PINKY_CONTROL_PASSWORD`를 정하면 로봇을 **움직이는** 명령(이동, 주차, 출차, 주행)은 비밀번호가 있어야 보낼 수 있습니다. 보기와 **멈추는** 명령(작업 취소, 정지)은 비밀번호 없이 됩니다. 위험할 때 누구든 멈출 수 있어야 하기 때문입니다.
-- 정하는 법, 같은 와이파이의 다른 PC에서 여는 법, 나중에 멀리 있는 팀원과 연결하는 법(Tailscale)은 [docs/remote_access.md](../docs/remote_access.md)에 있습니다.
-- API로 직접 보낼 때는 머리글 `X-Control-Password: <비밀번호>`를 붙입니다. 틀리면 401이 돌아옵니다.
-
-## 대시보드 사용법
-
-| 하고 싶은 일 | 방법 |
-|---|---|
-| 로봇 고르기 | 오른쪽 카드에서 로봇 이름을 누릅니다. 이름 아래 파란 선이 생기고, 지도에서는 그 로봇 둘레에 파란 원이 생깁니다 |
-| 원하는 곳으로 보내기 | 지도를 누르면 목표가 찍힙니다. 위쪽 막대의 **이동 보내기**를 누릅니다 |
-| 주차·출차 | 카드에서 칸(`slot_10` 등)을 고르고 **주차** 또는 **출차**를 누릅니다 |
-| 경로 주행 | 경로(`lap`)를 고르고 **주행**을 누릅니다 |
-| 하던 일 그만두기 | **작업 취소**: Nav2 목표만 취소합니다 |
-| 급히 세우기 | **정지**(로봇 하나) 또는 맨 위 **전체 정지**: 목표를 취소하고 속도 0 명령을 보냅니다 |
-
-버튼이 회색이면 지금 누를 수 없는 상태입니다. 마우스를 올리면 이유가 나옵니다(예: "Nav2가 아직 켜지지 않았습니다").
-
-## API (행동 단위)
+## 행동 단위 API
 
 | 단위 | 주소 | 보낼 내용 | 하는 일 |
 |---|---|---|---|
-| 기본 이동 | `POST /api/robots/{name}/goto` | `{"x": 0.3, "y": -1.1, "yaw": 0.0}` | map 좌표로 이동 (x, y [m], yaw [rad]) |
-| | `POST /api/robots/{name}/cancel` | 없음 | 진행 중인 작업 취소 |
-| | `POST /api/robots/{name}/stop` | 없음 | 취소하고 바로 멈춤 |
-| | `POST /api/stop` | 없음 | 모든 로봇 정지 |
-| 주차·출차 | `POST /api/robots/{name}/park` | `{"slot": "slot_10"}` | 주차 칸으로 이동 (`slots.yaml`) |
-| | `POST /api/robots/{name}/unpark` | `{"slot": "slot_10"}` | 칸에서 나와 출차 위치로 이동 (`control.yaml`) |
-| 주행 | `POST /api/robots/{name}/lap` | `{"route": "lap"}` | 경유점을 차례로 지남 (`route.yaml`) |
-| 상태 조회 | `GET /api/robots`, `GET /api/robots/{name}` | | 위치, 속도, Nav2 상태, 지금 작업 |
-| | `GET /api/log?limit=50` | | 끝난 작업 기록 (최근 것 먼저) |
-| | `GET /api/layout`, `GET /api/map` | | 주차 칸·경로·출차 위치, 지도 |
-| 팀 비밀번호 | `GET /api/auth`, `POST /api/auth/check` | 머리글 `X-Control-Password` | 비밀번호가 필요한지, 맞는지 |
-| | `WS /api/ws` | | 위 상태를 초당 10번 보내 줌 |
+| 기본 이동 | `POST /api/robots/{name}/goto` | `{"x", "y", "yaw"}` | 그 좌표로 이동 |
+| | `POST /api/robots/{name}/teleop` | `{"linear", "angular"}` | 직접 운전. 0.5초 안에 다시 안 보내면 멈춤. 최고 0.15 m/s |
+| | `POST /api/robots/{name}/cancel` · `/stop` · `POST /api/stop` | 없음 | 작업 취소 · 정지 · 전체 정지 |
+| 주차·출차 | `POST /api/robots/{name}/park` · `/unpark` | `{"slot": "slot_10"}` | 칸으로 들어가기 · 칸에서 나와 트랙으로 |
+| | `POST /api/robots/{name}/park/precise` | 없음 | **준비 중** (#7 마커 검출, #8 정밀 정렬). 지금은 501 |
+| 주행 | `POST /api/robots/{name}/drive` | `{"track": 1}` | 경기장: 그 트랙을 반시계로 한 바퀴 (경유점 12개) |
+| | `POST /api/robots/{name}/lane_change` | `{"to": 2}` | 경기장: 다른 트랙으로 옮겨 타기 |
+| | `POST /api/robots/{name}/lap` | `{"route": "lap"}` | 공장 월드: `route.yaml` 경로 |
+| | `POST /api/robots/{name}/gap` | 없음 | **준비 중** (#12 앞뒤 간격 조절). 지금은 501 |
+| 주유 | `POST /api/robots/{name}/fuel` | `{"step": "wait"}` | `wait` 대기선 30 → `enter` 주유구역 20 → `leave` 2번 트랙 복귀 |
+| 차종 | `PUT /api/robots/{name}/vehicle` | `{"type": "T15"}` | 차종 표시를 바꿈 (회전 반경 반영은 #5, #6) |
+| 시나리오 | `GET /api/scenario` | | 시연 단계와 진행 상태 |
+| | `POST /api/scenario/next` · `/run` · `/stop` · `/confirm` · `/reset` | | 다음 단계 · 끝까지 · 멈춤 · 사람 확인 · 처음부터 |
+| 상태 조회 | `GET /api/robots`, `/api/log`, `/api/layout`, `/api/map`, `WS /api/ws` | | 위치, 속도, 차종, 지금 작업, 기록, 배치 |
 
 **응답 코드 읽는 법**
 
 | 코드 | 뜻 | 할 일 |
 |---|---|---|
 | 200 | 받았습니다 | 작업 번호와 목표가 돌아옵니다 |
-| 401 | 팀 비밀번호가 틀렸거나 없습니다 | `X-Control-Password` 머리글을 확인합니다 |
-| 404 | 없는 로봇·칸·경로 이름입니다 | 이름을 확인합니다. 오류 문장에 있는 이름 목록이 나옵니다 |
-| 409 | 그 로봇이 이미 다른 작업 중입니다 | 먼저 `cancel`합니다 (한 로봇은 한 번에 작업 하나) |
-| 422 | 보낸 내용이 잘못됐습니다 | x, y가 숫자인지 확인합니다 |
-| 503 | 그 로봇의 Nav2가 아직 켜지지 않았습니다 | `sim.launch.py`가 Nav2를 15초 뒤에 켜므로 잠시 기다립니다 |
+| 400 | 지금 배치에서는 없는 행동입니다 | 예: 공장 월드에서 트랙 주행 |
+| 401 | 팀 비밀번호가 틀렸거나 없습니다 | `X-Control-Password` 머리글 |
+| 404 | 없는 로봇·칸·경로·차종 이름입니다 | 오류 문장에 있는 이름 목록 |
+| 409 | 그 로봇이 다른 작업 중이거나 시나리오가 실행 중입니다 | 먼저 취소하거나 멈춥니다 |
+| 422 | 보낸 내용이 잘못됐습니다 | 숫자, 단계 이름 확인 |
+| 501 | 기획에는 있지만 아직 준비 중인 기능입니다 | 담당 이슈 번호가 함께 옵니다 |
+| 503 | 그 로봇의 Nav2가 아직 켜지지 않았습니다 | 잠시 기다립니다 |
 
-터미널에서 시험하는 예 (`curl`은 주소로 요청을 보내는 명령입니다):
+**지금 방식의 한계.** 트랙 주행과 차선 변경은 트랙 중심선 위 경유점을 Nav2에 주는 방식이라 도착 오차가 25 cm입니다. 정밀 차선 주행(#10, #11)이 생기면 API 주소는 그대로 두고 안쪽(`layout.py`, `fleet.py`)만 바꿉니다.
 
-```bash
-curl http://localhost:8080/api/robots                     # 로봇 상태 보기
-curl -X POST http://localhost:8080/api/robots/pinky1/park \
-     -H 'Content-Type: application/json' -d '{"slot": "slot_10"}'   # pinky1 주차
-curl -X POST http://localhost:8080/api/stop               # 전체 정지
-```
+## 시연 시나리오
+
+`config/scenario.yaml`에 기획의 "전체 테스트 시연 순서"를 단계로 적었습니다.
+
+| 단계 | 내용 |
+|---|---|
+| 1 | 주차 구역에서 시작: A(T00) 10번, B(T10) 11번 |
+| 2 | 1바퀴 직진: A 1번 트랙, B 2번 트랙 |
+| 3 | 2번 트랙 간격 조절 1바퀴: **준비 중(#12)이라 건너뜀** |
+| 4 | A 차선 변경 후 대기선 → 주유구역 |
+| 5 | B 대기선에서 차례 기다리기 |
+| 6 | A 트레일러 바꾸기: **사람 확인을 기다림** → T15 → 트랙 복귀 |
+| 7 | B 주유 후 11번 칸에 주차 |
+| 8 | A(T15) 2번 트랙 1바퀴 |
+| 9 | A 10번 칸에 주차하고 종료 |
+
+- 한 단계 안에서 A와 B는 동시에, 같은 로봇의 행동은 적힌 순서대로 합니다.
+- **다음 단계**는 한 단계만, **끝까지**는 이어서 합니다. 실패하면 그 단계에서 멈추고 이유를 보여 줍니다.
+- 단계를 고치려면 YAML만 바꿉니다. `do`: `park`, `unpark`, `drive`, `lane_change`, `fuel`, `goto`, `vehicle`, `confirm`. 아직 없는 기능은 `pending: 설명`.
+
+## 관제센터 화면 조작
+
+| 하고 싶은 일 | 마우스 | 키보드 |
+|---|---|---|
+| 유닛 고르기 | 유닛 카드나 경기장의 로봇을 클릭 | `1`, `2` |
+| 그 자리로 보내기 | 경기장 빈 곳을 **우클릭** (휴대폰은 길게 누르기) | |
+| 주차 칸에 주차 | 주차 칸을 우클릭, 또는 칸을 고르고 **주차** | `P` (출차 `U`) |
+| 주유 | 대기선·주유구역을 우클릭, 또는 버튼 | `F` 대기선, `G` 주유구역, `H` 복귀 |
+| 트랙 한 바퀴 | **1번 트랙**, **2번 트랙** | `Q`, `E` |
+| 차선 변경 | **차선 변경** (지금 트랙의 반대편으로) | `C` |
+| 차종 바꾸기 | 유닛 카드의 T00 · T10 · T15 | |
+| 직접 운전 | **직접 운전**을 켜고 조이스틱을 끌기 | `M` 켜기/끄기, `W A S D` 또는 방향키 |
+| 작업 취소 · 정지 | 버튼 | `X` · `Space` |
+| 전체 정지 | 맨 위 **전체 정지** | `Esc` |
+| 시나리오 | 오른쪽 **다음 단계 · 끝까지 · 멈춤 · 처음부터**, 확인 단계에서는 **확인했습니다** | |
+
+- 우클릭하기 전에 마우스를 올리면 "우클릭: slot_10 주차"처럼 무엇을 할지 미리 보여 줍니다.
+- 버튼이 회색이면 지금 할 수 없는 상태입니다. 마우스를 올리면 이유가 나옵니다(예: "작업 중입니다. 먼저 취소하세요").
+- 직접 운전은 손을 떼거나 창을 벗어나면 0.5초 안에 섭니다. Nav2 작업 중에는 켜지지 않습니다.
+
+## 실행
+
+명령은 모두 컨테이너 안의 작업공간 루트(`/ws`)에서 실행합니다.
+
+| 순서 | 명령 | 무엇을 하나요 | 왜 필요한가요 |
+|---|---|---|---|
+| 1 | `colcon build --symlink-install --packages-up-to pinky_parking_control` | 이 패키지를 설치합니다 | 새 파일이 생기면 한 번 빌드해야 `ros2`가 찾습니다 |
+| 2 | `source install/setup.bash` | 설치한 것을 지금 터미널에 알립니다 | 안 하면 "패키지를 찾을 수 없음" |
+| 3 | `ros2 launch pinky_parking_bringup sim.launch.py` | 시뮬레이션을 켭니다 | 명령을 받을 로봇이 있어야 합니다 |
+| 4 | (다른 터미널) `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 | API와 화면을 제공합니다 |
+| 5 | 호스트 브라우저에서 `http://localhost:8080` | 관제센터를 엽니다 | `compose.yaml`이 8080을 열어 둡니다 |
+
+- API 설명서: `http://localhost:8080/docs` (버튼을 눌러 직접 시험할 수 있습니다)
+- 서버 없이 화면만: `static` 폴더를 웹 서버로 열고 주소 끝에 `?demo` (경기장), `?demo=factory` (공장 월드), `?demo=lock` (비밀번호 `demo`)
+
+## 팀 비밀번호와 다른 PC에서 열기
+
+- 환경변수 `PINKY_CONTROL_PASSWORD`를 정하면 **움직이는** 명령은 비밀번호가 있어야 합니다. 보기와 **멈추는** 명령(취소, 정지, 시나리오 멈춤)은 비밀번호 없이 됩니다. 위험할 때 누구든 멈출 수 있어야 하기 때문입니다.
+- 정하는 법과 다른 PC에서 여는 법은 [docs/remote_access.md](../docs/remote_access.md)에 있습니다.
 
 ## 설정
 
 | 파일 | 내용 |
 |---|---|
-| `config/control.yaml` | 포트, 상태 전송 주기, 행동별 제한 시간, 출차 위치(임시) |
-| `pinky_parking_bringup/config/robots.yaml` | 로봇 목록과 도메인 (그대로 읽음) |
-| `pinky_parking_docking/config/slots.yaml` | 주차 칸 (그대로 읽음) |
-| `pinky_parking_driving/config/route.yaml` | 경로 (그대로 읽음) |
+| `config/control.yaml` | 포트, 배치(`layout`), 처음 차종, 직접 운전 속도 제한, 행동별 제한 시간, 공장 월드 출차 위치 |
+| `config/arena.yaml` | 경기장 도면 좌표: 트랙, 주차 칸, 출차 위치, 주유구역, 대기선, 차종 |
+| `config/scenario.yaml` | 시연 단계와 유닛 이름(A, B) |
+| `pinky_parking_bringup/config/robots.yaml` 외 | 로봇 목록, 공장 월드의 칸·경로·지도 (그대로 읽음) |
 
-- 출차 위치(`unpark_exits`)는 출차 명령(#9)이 생기기 전까지 쓰는 임시 값입니다. 공식 공장 월드에서 각 로봇의 시작 위치입니다.
-- 실행 인자: `control_server --port 8081 --robots <파일> --slots <파일> --routes <파일> --map <지도 YAML>`
+`arena.yaml`은 경기장 월드(#1)·지도(#3)가 생기면 그 좌표와 맞춰 보고, 기본 설정 전환(#4) 때 알맞은 패키지로 옮깁니다.
 
 ## 확인
 
 | 명령 | 무엇을 확인하나요 |
 |---|---|
-| `colcon test --packages-select pinky_parking_control && colcon test-result` | 코드 스타일과 단위 시험(ROS 없이 도는 작업 상태·API 응답 시험) |
-| `src/pinky_parking/scripts/control_smoke_test.sh` | 시뮬레이션을 켜고 **API로** pinky1 주차, pinky2 주행을 보내 둘 다 성공하는지. 마지막 줄 "CONTROL SMOKE TEST PASSED" |
+| `colcon test --packages-select pinky_parking_control && colcon test-result` | 코드 스타일과 단위 시험 19개 (경기장 좌표, 행동, 시나리오 전체 흐름, API 응답, 비밀번호) |
+| `src/pinky_parking/scripts/control_smoke_test.sh` | 시뮬레이션을 켜고 API로 pinky1 주차, pinky2 주행을 보내 둘 다 성공하는지. 마지막 줄 "CONTROL SMOKE TEST PASSED" |
 
 ## 파일
 
 | 파일 | 하는 일 |
 |---|---|
-| `server.py` | HTTP·WebSocket 주소와 대시보드 제공, 실행 진입점 `control_server` |
-| `fleet.py` | 행동 단위(goto, park, unpark, lap, cancel, stop)를 Nav2 목표로 바꿈, 제한 시간 감시 |
-| `robot_link.py` | 로봇 한 대의 도메인에 rclpy로 붙어 Nav2 액션 호출, `amcl_pose`·`odom` 구독 |
-| `model.py` | 작업 상태, 좌표 변환, 기록 (ROS 없이 시험 가능) |
-| `mapdata.py` | Nav2 지도(YAML + PGM)를 대시보드용으로 읽음 |
-| `static/` | 대시보드 (`index.html`, `app.css`, `app.js`, 모의 로봇 `demo.js`) |
+| `server.py` | HTTP·WebSocket 주소, 화면 제공, 실행 진입점 `control_server` |
+| `fleet.py` | 행동 단위를 Nav2 목표로 바꿈, 차종, 직접 운전 제한, 시간 초과 감시 |
+| `layout.py` | 경기장 도면 계산(트랙 경유점, 차선 변경, 주유 위치)과 공장 월드 |
+| `scenario.py` | 시연 시나리오 실행기 |
+| `robot_link.py` | 로봇 한 대의 도메인에 rclpy로 붙어 Nav2 액션 호출, 위치·속도 구독, 직접 운전 |
+| `model.py`, `mapdata.py` | 작업 상태와 기록, Nav2 지도 읽기 |
+| `static/` | 관제센터 화면 (`index.html`, `app.css`, `app.js`, 도면 계산 `arena.js`, 모의 로봇 `demo.js`) |
 
 ## 안전
 
-- 실물 로봇을 이 대시보드로 움직일 때는 다른 사람이 확인한 뒤 낮은 속도 제한으로 시험합니다.
-- **정지**는 Nav2 목표를 취소하고 `cmd_vel`에 0을 한 번 보냅니다. 비상 정지 장치를 대신하지 않습니다.
+- 실물 로봇은 다른 사람이 확인한 뒤 낮은 속도 제한(`control.yaml`의 `teleop`)으로 시험합니다.
+- **정지**는 Nav2 목표를 취소하고 `cmd_vel`에 0을 보냅니다. 비상 정지 장치를 대신하지 않습니다.

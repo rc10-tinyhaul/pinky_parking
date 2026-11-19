@@ -12,7 +12,7 @@
 - 로봇별 `ROS_DOMAIN_ID`(pinky1 = 11, pinky2 = 12)와 Nav2
 - 주차 칸 이동(`park`), 경유점 주행(`lap`) 뼈대
 - 명령: `send_goal`(목표 전송), `auto_explore`(지도 작성용 탐색), `sim_speed`(시뮬레이션 속도 측정)
-- 관제실: 행동 단위 API와 실시간 웹 대시보드 (`pinky_parking_control`, http://localhost:8080)
+- 관제센터: 행동 단위 API, 시연 시나리오 실행, 게임 조종석 방식 웹 화면 (`pinky_parking_control`, http://localhost:8080)
 - 동작 검사 스크립트 (`scripts/smoke_test.sh`, 관제 API는 `scripts/control_smoke_test.sh`)
 - Docker 환경 (GPU 없음 / NVIDIA / Intel·AMD)
 
@@ -111,7 +111,7 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 | [pinky_parking_bringup](pinky_parking_bringup/README.md) | 로봇 목록, 전체 실행 launch, 도구 명령 |
 | [pinky_parking_docking](pinky_parking_docking/README.md) | 입차·출차 |
 | [pinky_parking_driving](pinky_parking_driving/README.md) | 도로 주행 |
-| [pinky_parking_control](pinky_parking_control/README.md) | 관제실: 행동 단위 API, 대시보드 |
+| [pinky_parking_control](pinky_parking_control/README.md) | 관제센터: 행동 단위 API, 시연 시나리오, 웹 화면 |
 
 ```
 pinky_parking/
