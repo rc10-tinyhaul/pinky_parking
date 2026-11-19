@@ -7,6 +7,7 @@
 #   ./run.sh check    감지 결과와 고를 설정만 출력
 #
 # 그래픽을 직접 고르려면: PINKY_GPU=nvidia|intel|cpu ./run.sh
+# 실물 로봇과 통신하려면 호스트 네트워크로: PINKY_NETWORK=host ./run.sh   (compose.real.yaml)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -17,6 +18,7 @@ USER_GID=$(id -g)
 export USER_UID USER_GID
 LOCAL_DIR=.run
 LOCAL_COMPOSE=$LOCAL_DIR/compose.local.yaml
+NETWORK=${PINKY_NETWORK:-isolated}   # isolated: 시뮬레이션 (기본) | host: 실물 로봇
 
 say() { echo "[run.sh] $*"; }
 
@@ -70,12 +72,25 @@ choose_mode() {   # nvidia | intel | cpu
   echo cpu
 }
 
-compose_args() {   # 모드별 compose 파일
+compose_args() {   # 모드별 compose 파일 (그래픽 + 네트워크)
+  local files
   case "$1" in
-    nvidia) echo "-f compose.yaml -f compose.gpu.yaml" ;;
-    intel)  write_dri_compose; echo "-f compose.yaml -f $LOCAL_COMPOSE" ;;
-    cpu)    echo "-f compose.yaml" ;;
+    nvidia) files="-f compose.yaml -f compose.gpu.yaml" ;;
+    intel)  write_dri_compose; files="-f compose.yaml -f $LOCAL_COMPOSE" ;;
+    cpu)    files="-f compose.yaml" ;;
     *) say "알 수 없는 PINKY_GPU 값: $1 (nvidia|intel|cpu)"; exit 1 ;;
+  esac
+  case "$NETWORK" in
+    isolated) echo "$files" ;;
+    host)     echo "$files -f compose.real.yaml" ;;
+    *) say "알 수 없는 PINKY_NETWORK 값: $NETWORK (isolated|host)"; exit 1 ;;
+  esac
+}
+
+describe_network() {
+  case "$1" in
+    host) echo "호스트 네트워크(실물 로봇용). 시뮬레이션은 띄우지 마세요: 같은 도메인의 실물 로봇과 섞입니다." ;;
+    *)    echo "격리된 네트워크(시뮬레이션용). 실물 로봇과는 통신하지 않습니다." ;;
   esac
 }
 
@@ -98,11 +113,24 @@ check_docker() {
 
 running() { [ -n "$(docker compose ps -q sim 2>/dev/null)" ]; }
 
+running_network() {   # 떠 있는 컨테이너의 네트워크: host | isolated
+  local mode
+  mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$(docker compose ps -q sim)" 2>/dev/null)
+  [ "$mode" = host ] && echo host || echo isolated
+}
+
 up() {
   check_docker
-  if running; then say "이미 실행 중입니다."; return; fi
+  if running; then
+    if [ "$(running_network)" != "$NETWORK" ]; then
+      say "컨테이너가 다른 네트워크($(running_network))로 실행 중입니다. 바꾸려면 먼저 ./run.sh down"
+      exit 1
+    fi
+    say "이미 실행 중입니다."; return
+  fi
   mode=$(choose_mode)
   say "$(describe "$mode")"
+  say "$(describe_network "$NETWORK")"
   # shellcheck disable=SC2046
   docker image inspect "$IMAGE" >/dev/null 2>&1 || { say "이미지가 없어 먼저 빌드합니다 (처음 한 번, 수 분)."; docker compose build; }
   docker compose $(compose_args "$mode") up -d
@@ -118,7 +146,9 @@ case "${1:-shell}" in
     echo "NVIDIA Container Toolkit: $(has_nvidia_toolkit && echo 있음 || echo 없음)"
     echo "Intel·AMD 그래픽: $(has_other_gpu && echo 있음 || echo 없음)"
     mode=$(choose_mode check); echo "선택: $mode — $(describe "$mode")"
+    echo "네트워크: $NETWORK — $(describe_network "$NETWORK")"
+    running && echo "실행 중인 컨테이너의 네트워크: $(running_network)"
     echo "compose: docker compose $(compose_args "$mode")"
     ;;
-  *) sed -n '2,9p' "$0"; exit 1 ;;
+  *) sed -n '2,10p' "$0"; exit 1 ;;
 esac

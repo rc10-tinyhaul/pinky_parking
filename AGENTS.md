@@ -41,6 +41,7 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 - 저장소는 컨테이너의 `/ws/src/pinky_parking`에 연결되어 있어 고친 코드와 저장한 지도는 호스트에 남습니다. `/ws/build`, `/ws/install`은 컨테이너 안에만 있어 `./run.sh down` 뒤에는 이미지를 빌드했을 때의 상태로 돌아갑니다. 새 파일·실행 파일을 추가한 뒤 컨테이너를 새로 띄웠으면 colcon build를 다시 합니다.
 - `run.sh`는 이미지가 없을 때만 빌드합니다. `docker/Dockerfile`, `package.xml`의 의존성, `pinky_parking.repos`를 바꿨으면 `docker compose build`를 직접 실행합니다.
 - 컨테이너는 호스트와 네트워크를 공유하지 않습니다(같은 네트워크의 실물 로봇과 섞이지 않게). 호스트의 `ros2` 명령으로는 시뮬레이션 토픽이 보이지 않으므로, 모든 터미널은 `./run.sh`로 같은 컨테이너에 들어갑니다.
+- 실물 로봇용은 `PINKY_NETWORK=host ./run.sh`(`compose.real.yaml`, 호스트 네트워크)입니다. 이 모드에서는 시뮬레이션을 띄우지 않습니다.
 
 ## 패키지와 범위
 
