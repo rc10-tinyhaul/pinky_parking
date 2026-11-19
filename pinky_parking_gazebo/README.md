@@ -25,6 +25,7 @@ Gazebo 월드를 띄웁니다.
 | `x`, `y`, `yaw` | `0.0` | 스폰 위치 [m], 방향 [rad] |
 | `camera` | `true` | 카메라 영상 브리지 |
 | `cam_tilt_deg` | `8` | 카메라 기울기 [deg] |
+| `vehicle` | `basic` | 차종(`pinky_parking_description`의 `config/vehicles.yaml`) |
 
 ## 토픽 (각 로봇의 도메인)
 
