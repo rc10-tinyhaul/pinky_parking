@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pinky 관제실</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="화면">
+    <a class="brand" href="#" title="Pinky 관제실" aria-label="Pinky 관제실">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M5 8.5v7M19 8.5v7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="12" cy="7.6" r="1.6" fill="currentColor"/>
+      </svg>
+    </a>
+    <a class="rail-item" href="#" data-view="board" title="관제" aria-label="관제">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6.5 9 4.5l6 2 5-2v13l-5 2-6-2-5 2z M9 4.5v13 M15 6.5v13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <span>관제</span>
+    </a>
+    <a class="rail-item" href="#log" data-view="log" title="작업 기록" aria-label="작업 기록">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span>기록</span>
+    </a>
+    <a class="rail-item rail-bottom" href="docs" target="_blank" rel="noopener" title="API 문서" aria-label="API 문서">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 7 3.5 12 8 17M16 7l4.5 5-4.5 5M13.5 5l-3 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>API</span>
+    </a>
+  </nav>
+
+  <main class="canvas">
+    <!-- 관제 화면 -->
+    <section class="view" id="view-board" aria-labelledby="board-title">
+      <header class="title-row">
+        <div class="title-text">
+          <h1 id="board-title">관제실</h1>
+          <p class="finding" id="finding">서버에 연결하는 중입니다.</p>
+        </div>
+        <div class="title-actions">
+          <button class="btn btn-quiet" id="lock" type="button" hidden>잠그기</button>
+          <p class="fresh" id="fresh"><span class="fresh-dot" aria-hidden="true"></span><span id="fresh-text">연결 중</span></p>
+          <button class="btn btn-stop" id="stop-all" type="button">전체 정지</button>
+        </div>
+      </header>
+
+      <form class="unlock" id="unlock" hidden>
+        <p class="unlock-text"><b>명령이 잠겨 있습니다.</b> 로봇을 움직이려면 팀 비밀번호를 넣으세요. 정지와 작업 취소는 비밀번호 없이 됩니다.</p>
+        <label class="sr" for="password">팀 비밀번호</label>
+        <input class="input" id="password" type="password" autocomplete="current-password" placeholder="팀 비밀번호">
+        <button class="btn btn-go" type="submit">잠금 풀기</button>
+        <p class="unlock-error" id="unlock-error" role="status"></p>
+      </form>
+
+      <div class="board">
+        <article class="card map-card" aria-labelledby="map-title">
+          <header class="card-head">
+            <h2 id="map-title">배치도</h2>
+            <p class="meta" id="map-meta">pinky_factory.world</p>
+            <ul class="legend" id="legend"></ul>
+          </header>
+          <div class="map-bar" id="map-bar"></div>
+          <div class="map-wrap"><canvas id="map" aria-label="로봇 위치와 주차 칸이 표시된 지도"></canvas></div>
+        </article>
+
+        <div class="robots" id="robots"></div>
+
+        <article class="card log-card" aria-labelledby="log-title">
+          <header class="card-head">
+            <h2 id="log-title">작업 기록</h2>
+            <a class="head-link" href="#log" id="log-count">전체 보기</a>
+          </header>
+          <div class="table-wrap"><table class="table" id="log-table"></table></div>
+        </article>
+
+        <article class="card layout-card" aria-labelledby="slots-title">
+          <header class="card-head">
+            <h2 id="slots-title">주차 칸과 경로</h2>
+            <p class="meta">map 좌표 · 공장 월드 임시 값</p>
+          </header>
+          <div class="table-wrap"><table class="table" id="slots-table"></table></div>
+          <div class="table-wrap"><table class="table" id="routes-table"></table></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 작업 기록 화면 -->
+    <section class="view" id="view-log" aria-labelledby="log-view-title" hidden>
+      <header class="title-row">
+        <div class="title-text">
+          <h1 id="log-view-title">작업 기록</h1>
+          <p class="finding" id="log-summary">—</p>
+        </div>
+      </header>
+      <article class="card full-log">
+        <div class="table-wrap"><table class="table" id="log-full"></table></div>
+      </article>
+    </section>
+  </main>
+</div>
+
+<template id="robot-card">
+  <article class="card robot">
+    <header class="robot-head">
+      <button class="robot-name" type="button" data-r="select" aria-pressed="false">
+        <span class="swatch" data-r="swatch" aria-hidden="true"></span>
+        <span class="name" data-r="name"></span>
+      </button>
+      <span class="domain" data-r="domain"></span>
+      <span class="pill" data-r="state"></span>
+    </header>
+    <p class="task-line" data-r="task">—</p>
+    <dl class="figures">
+      <div><dt>x</dt><dd data-r="x">—</dd></div>
+      <div><dt>y</dt><dd data-r="y">—</dd></div>
+      <div><dt>방향</dt><dd data-r="yaw">—</dd></div>
+      <div><dt>속도</dt><dd data-r="speed">—</dd></div>
+    </dl>
+    <div class="controls">
+      <div class="control-row">
+        <label class="sr" data-r="slot-label">주차 칸</label>
+        <select class="select" data-r="slot"></select>
+        <button class="btn" type="button" data-r="park">주차</button>
+        <button class="btn" type="button" data-r="unpark">출차</button>
+      </div>
+      <div class="control-row">
+        <label class="sr" data-r="route-label">경로</label>
+        <select class="select" data-r="route"></select>
+        <button class="btn" type="button" data-r="lap">주행</button>
+        <button class="btn btn-quiet" type="button" data-r="cancel">작업 취소</button>
+        <button class="btn btn-halt" type="button" data-r="stop">정지</button>
+      </div>
+    </div>
+    <p class="card-error" data-r="error" role="status"></p>
+    <p class="link-line" data-r="link"></p>
+  </article>
+</template>
+
+<script src="demo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

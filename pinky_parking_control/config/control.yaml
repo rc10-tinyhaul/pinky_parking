@@ -1,0 +1,17 @@
+# 관제 서버 설정. 로봇 목록은 pinky_parking_bringup/config/robots.yaml 을 그대로 쓴다.
+host: 0.0.0.0
+port: 8080
+status_rate_hz: 10        # 대시보드로 상태를 보내는 주기 (WebSocket)
+
+# 작업 제한 시간 [s, 실제 시간]. 넘으면 Nav2 목표를 취소하고 '시간 초과'로 기록한다.
+timeout_s:
+  goto: 180
+  park: 180
+  unpark: 180
+  lap: 300
+
+# 출차할 때 칸에서 나가 설 위치 (map 좌표). x, y [m], yaw [rad].
+# 출차 명령(#9)이 생기기 전까지 쓰는 임시 값으로, 공식 공장 월드에서 각 로봇의 시작 위치다.
+unpark_exits:
+  slot_10: {x: 0.0, y: 0.0, yaw: 0.0}
+  slot_11: {x: 0.5, y: 1.0, yaw: 3.14159}
