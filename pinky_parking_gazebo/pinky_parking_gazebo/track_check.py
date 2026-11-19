@@ -21,7 +21,7 @@ BODY_HALF_WIDTH = 0.065   # Pinky Pro 폭 130 mm 의 절반 [m]
 
 
 def poses(world, name):
-    """Gazebo 에서 모델 위치 (x, y) 를 계속 읽는다."""
+    """Gazebo 에서 모델 위치를 (x, y, 시뮬레이션 시각 [s]) 로 계속 읽는다."""
     process = subprocess.Popen(
         ['gz', 'topic', '-e', '-t', f'/world/{world}/dynamic_pose/info', '--json-output'],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -31,10 +31,12 @@ def poses(world, name):
                 message = json.loads(line)
             except ValueError:
                 continue
+            stamp = message.get('header', {}).get('stamp', {})
+            sim_time = float(stamp.get('sec', 0)) + float(stamp.get('nsec', 0)) / 1e9
             for pose in message.get('pose', []):
                 if pose.get('name') == name:
                     position = pose.get('position', {})
-                    yield position.get('x', 0.0), position.get('y', 0.0)
+                    yield position.get('x', 0.0), position.get('y', 0.0), sim_time
                     break
     finally:
         process.kill()
@@ -54,11 +56,12 @@ def main():
     margin = (track['lane_width'] - track['tape_width']) / 2   # 중심에서 테이프 안쪽 가장자리까지
     lane, angle, start_angle = args.lane, None, None
     offsets, touching, start = [], 0, time.time()
-    for x, y in poses(args.world, args.name):
+    for x, y, sim_time in poses(args.world, args.name):
         lane, offset = lane_offset(track, x, y, lane)
         a = math.atan2(y, x)
         if angle is None:
             angle = start_angle = a
+            sim_start = sim_time
         angle += (a - angle + math.pi) % (2 * math.pi) - math.pi   # 이어지는 각도
         offsets.append(abs(offset))
         touching += abs(offset) + BODY_HALF_WIDTH > margin
@@ -74,7 +77,9 @@ def main():
 
     done = laps >= args.laps
     mean, worst = sum(offsets) / len(offsets) * 1000, max(offsets) * 1000
-    print(f'{args.name} {lane}번 차선: {laps:.2f}바퀴, {time.time() - start:.0f}s, '
+    wall, sim = time.time() - start, sim_time - sim_start
+    print(f'{args.name} {lane}번 차선: {laps:.2f}바퀴, {wall:.0f}s '
+          f'(시뮬레이션 {sim:.0f}s, 실시간의 {sim / wall:.2f}배), '
           f'중심에서 평균 {mean:.0f} mm / 최대 {worst:.0f} mm, '
           f'차체가 테이프에 닿은 비율 {touching / len(offsets) * 100:.0f}% '
           f'(여유 {(margin - BODY_HALF_WIDTH) * 1000:.0f} mm)')
