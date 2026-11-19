@@ -3,6 +3,7 @@
 
 공식 pinky_navigation/launch/bringup_launch.xml 을 쓰고, 두 가지만 덮어쓴다.
 - AMCL 초기 위치: 인자 x, y, yaw (공식 파일의 목록 형식은 Jazzy 에서 읽히지 않는다)
+- 트레일러 차량이면 costmap footprint (인자 vehicle, pinky_parking_description 의 차종)
 - lifecycle_nodes_nav 에 smoother_server 추가 (공식 기본값에서 빠져 있다)
 공식 실물용(bringup_launch.xml)과 시뮬레이션용(gz_bringup_launch.xml)은 기본값(map,
 use_sim_time)만 다르므로, 둘 다 넘기고 실물용 파일 하나로 쓴다. 실물은 use_sim_time:=false.
@@ -22,6 +23,8 @@ from launch.actions import DeclareLaunchArgument
 from launch.actions import ExecuteProcess
 from launch.actions import OpaqueFunction
 from launch.substitutions import LaunchConfiguration
+from pinky_parking_description.vehicles import footprint
+from pinky_parking_description.vehicles import load_vehicles
 from pinky_parking_navigation.params import nav2_params
 import yaml
 
@@ -44,9 +47,13 @@ def setup(context):
     limits = {key: float(arg(key)) if arg(key) else None
               for key in ('max_speed', 'goal_tolerance', 'max_turn', 'lookahead')}
     fine_amcl = arg('fine_amcl').lower() == 'true'
+    vehicles = load_vehicles()
+    if arg('vehicle') not in vehicles:
+        raise ValueError(f"없는 차종입니다: {arg('vehicle')} (있는 차종: {', '.join(vehicles)})")
     params = nav2_params(yaml.safe_load(Path(base_file).read_text()),
                          float(arg('x')), float(arg('y')), float(arg('yaw')),
-                         fine_amcl=fine_amcl, **limits)
+                         fine_amcl=fine_amcl, footprint=footprint(vehicles[arg('vehicle')]),
+                         **limits)
 
     domain_id = arg('domain_id')
     use_sim_time = 'True' if arg('use_sim_time').lower() == 'true' else 'False'
@@ -114,6 +121,9 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='0.0', description='AMCL 초기 위치 x [m]'),
         DeclareLaunchArgument('y', default_value='0.0', description='AMCL 초기 위치 y [m]'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='AMCL 초기 방향 [rad]'),
+        DeclareLaunchArgument(
+            'vehicle', default_value='basic',
+            description='차종: 트레일러면 footprint 를 늘림 (pinky_parking_description)'),
         DeclareLaunchArgument(
             'max_speed', default_value='',
             description='직진 속도 상한 [m/s]. 비우면 공식 값 (실물 첫 시험은 0.1 등으로 낮춤)'),

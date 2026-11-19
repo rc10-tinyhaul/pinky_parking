@@ -29,7 +29,7 @@ Pinky Pro 차량 모델입니다. 공식 로봇 모델(`pinky_description`) 뒤�
 - 바닥에서 떠 있고 바퀴가 없습니다. 무게는 차체가 받칩니다.
 - 윗면이 LiDAR 스캔 높이보다 낮아서, LiDAR가 자기 트레일러를 장애물로 보지 않습니다. 실물에서 트레일러나 짐이 이보다 높으면 스캔 필터가 필요합니다.
 
-파이썬에서는 `pinky_parking_description.vehicles`의 `vehicle_urdf(차종, namespace=…, is_sim=…)`로 URDF를 만듭니다.
+파이썬에서는 `pinky_parking_description.vehicles`의 `vehicle_urdf(차종, namespace=…, is_sim=…)`로 URDF를, `footprint(차종 설정)`으로 Nav2 footprint를 만듭니다. footprint는 트레일러 차종만 뒤쪽을 트레일러 끝까지 늘리고, `basic`은 `None`(공식 Nav2 값)입니다.
 
 ## 곡선에서 트레일러 꼬리
 

@@ -1,6 +1,8 @@
 """로봇별 Nav2 파라미터(params.nav2_params) 검사."""
 from pinky_parking_navigation.params import nav2_params
 
+OFFICIAL = '[[0.06, 0.06], [0.06, -0.06], [-0.06, -0.06], [-0.06, 0.06]]'
+
 
 def base():
     return {
@@ -8,7 +10,14 @@ def base():
         'controller_server': {'ros__parameters': {'FollowPath': {'desired_linear_vel': 0.2}}},
         'velocity_smoother': {'ros__parameters': {
             'max_velocity': [0.25, 0.0, 1.5], 'min_velocity': [-0.25, 0.0, -1.5]}},
+        'local_costmap': {'local_costmap': {'ros__parameters': {'footprint': OFFICIAL}}},
+        'global_costmap': {'global_costmap': {'ros__parameters': {'footprint': OFFICIAL}}},
     }
+
+
+def footprints(params):
+    costmaps = ('local_costmap', 'global_costmap')
+    return [params[c][c]['ros__parameters']['footprint'] for c in costmaps]
 
 
 def test_initial_pose_and_original_untouched():
@@ -18,6 +27,14 @@ def test_initial_pose_and_original_untouched():
         'x': 0.5, 'y': 1.0, 'z': 0.0, 'yaw': 3.14}
     assert original['amcl']['ros__parameters']['initial_pose'] == [0, 0, 0]
     assert params['velocity_smoother'] == original['velocity_smoother']   # max_speed 없으면 그대로
+    assert footprints(params) == [OFFICIAL, OFFICIAL]                     # footprint 없으면 공식 값
+
+
+def test_trailer_footprint_on_both_costmaps():
+    poly = [[0.06, 0.06], [0.06, -0.06], [-0.175, -0.06], [-0.175, 0.06]]
+    params = nav2_params(base(), 0.0, 0.0, 0.0, footprint=poly)
+    expected = '[[0.06, 0.06], [0.06, -0.06], [-0.175, -0.06], [-0.175, 0.06]]'
+    assert footprints(params) == [expected, expected]
 
 
 def test_max_speed_lowers_controller_and_smoother():

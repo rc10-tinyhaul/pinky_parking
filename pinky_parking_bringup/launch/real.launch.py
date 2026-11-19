@@ -41,7 +41,8 @@ def setup(context):
             continue
         arguments = {
             'domain_id': robot['domain_id'], 'x': robot['x'], 'y': robot['y'],
-            'yaw': robot['yaw'], 'map': arg('map'), 'localization': arg('localization'),
+            'yaw': robot['yaw'], 'map': arg('map'), 'vehicle': robot['vehicle'],
+            'localization': arg('localization'),
             'use_sim_time': 'false', 'max_speed': arg('max_speed'),
             'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
             'lookahead': arg('lookahead'),

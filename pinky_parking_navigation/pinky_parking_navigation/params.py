@@ -3,7 +3,7 @@ import copy
 
 
 def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max_turn=None,
-                lookahead=None, fine_amcl=False):
+                lookahead=None, fine_amcl=False, footprint=None):
     """
     공식 nav2_params.yaml 에서 필요한 값만 바꾼 사본을 돌려준다.
 
@@ -20,6 +20,8 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
     - lookahead [m]: 주면 경로 추종의 주시 거리를 이 값으로 고정하고(공식은 0.3 ~ 0.9 m), 도착 전
       감속 구간도 같은 크기로 줄인다(공식 0.6 m). 경기장 트랙은 반경 0.4 m 라서 멀리 보면 곡선
       안쪽으로 파고들고, 0.4 m 짜리 짧은 이동은 처음부터 끝까지 감속 구간이 된다.
+    - footprint ([[x, y], ...]): 주면 local·global costmap 의 footprint 를 바꾼다(트레일러 차량).
+      None 이면 공식 값을 그대로 둔다.
     """
     params = copy.deepcopy(base_params)
     amcl = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
@@ -65,6 +67,11 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
         bottom = list(smoother.get('min_velocity', [-0.25, 0.0, -max_turn]))
         smoother['max_velocity'] = top[:2] + [min(top[2], max_turn)]
         smoother['min_velocity'] = bottom[:2] + [max(bottom[2], -max_turn)]
+    if footprint is not None:
+        text = '[' + ', '.join(f'[{px:g}, {py:g}]' for px, py in footprint) + ']'
+        for costmap in ('local_costmap', 'global_costmap'):
+            node = params.setdefault(costmap, {}).setdefault(costmap, {})
+            node.setdefault('ros__parameters', {})['footprint'] = text
     return params
 
 
