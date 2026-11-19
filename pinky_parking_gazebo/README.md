@@ -49,7 +49,7 @@ ros2 run pinky_parking_gazebo track_check pinky1 --laps 3      # 다른 터미�
 
 | 실행 파일 | 설명 |
 |---|---|
-| `track_check NAME [--laps N] [--lane K] [--timeout S]` | Gazebo의 실제 위치로 바퀴 수, 중심선에서 벗어난 평균·최대 거리, 차체(폭 130 mm)가 테이프에 닿은 시간 비율을 출력합니다. N바퀴를 돌면 종료 코드 0. `ROS_DOMAIN_ID`와 무관합니다 |
+| `track_check NAME [--laps N] [--lane K] [--change C] [--timeout S]` | Gazebo의 실제 위치로 바퀴 수, 중심선에서 벗어난 평균·최대 거리, 차체(폭 130 mm)가 테이프에 닿은 시간 비율, 시뮬레이션 속도를 출력합니다. `--change C`를 주면 차선 변경을 허용하고, 변경마다 시작·끝 위치(직선 안인지)와 넘어간 거리를 출력합니다. 변경 구간은 평균·최대에서 뺍니다. N바퀴를 돌고(변경이 C번이고 모두 직선 안이면) 종료 코드 0. `ROS_DOMAIN_ID`와 무관합니다 |
 | `make_lane_world [--track FILE]` | 치수 파일로 월드 SDF를 출력합니다 |
 
 치수는 `config/lane_track.yaml`에 있습니다. 바꾸면 월드 파일을 다시 만들고 빌드합니다(`colcon test`가 월드 파일과 치수가 맞는지 검사합니다).
