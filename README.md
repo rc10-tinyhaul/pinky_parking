@@ -112,6 +112,7 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 
 | 패키지 | 내용 |
 |---|---|
+| [pinky_parking_description](pinky_parking_description/README.md) | 차량 모델(기본, 트레일러) |
 | [pinky_parking_gazebo](pinky_parking_gazebo/README.md) | Gazebo 월드, 로봇 스폰과 브리지 |
 | [pinky_parking_navigation](pinky_parking_navigation/README.md) | 로봇별 Nav2, 지도 |
 | [pinky_parking_bringup](pinky_parking_bringup/README.md) | 로봇 목록, 전체 실행 launch, 도구 명령 |
