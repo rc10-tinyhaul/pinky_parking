@@ -3,6 +3,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
+from pinky_parking_description.vehicles import footprint
 from pinky_parking_description.vehicles import LIDAR_HEIGHT
 from pinky_parking_description.vehicles import load_vehicles
 from pinky_parking_description.vehicles import vehicle_urdf
@@ -60,3 +61,13 @@ def test_unknown_vehicle_and_too_tall_trailer(tmp_path):
                    'mass: 0.05}\n')
     with pytest.raises(ValueError, match='LiDAR'):
         load_vehicles(bad)
+
+
+def test_footprint():
+    vehicles = load_vehicles(CONFIG)
+    assert footprint(vehicles['basic']) is None            # 공식 Nav2 값을 그대로 씀
+    poly = footprint(vehicles['trailer10'])
+    xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+    assert min(xs) == pytest.approx(BODY_REAR - 0.10)       # 트레일러 끝까지
+    assert max(xs) == pytest.approx(0.06)                   # 앞은 공식 값
+    assert max(ys) == pytest.approx(0.06) and min(ys) == pytest.approx(-0.06)

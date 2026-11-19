@@ -11,6 +11,10 @@ import xacro
 import yaml
 
 LIDAR_HEIGHT = 0.125   # 바닥에서 LiDAR 스캔 면까지 [m] (공식 모델)
+BODY_REAR = 0.075      # 바퀴 축(base_footprint)에서 차체 뒤끝까지 [m] (공식 모델)
+# 공식 Nav2 footprint(pinky_navigation/params/nav2_params.yaml): 앞 0.06, 뒤 0.06, 좌우 0.06
+NAV2_FRONT = 0.06
+NAV2_HALF_WIDTH = 0.06
 KEYS = ('length', 'width', 'top', 'clearance', 'mass')
 
 
@@ -34,6 +38,20 @@ def load_vehicles(path=None):
                              'LiDAR 가 자기 트레일러를 장애물로 봅니다')
         vehicles[name] = spec
     return vehicles
+
+
+def footprint(spec):
+    """
+    차종의 Nav2 footprint 꼭짓점 목록을 돌려준다. 트레일러가 없으면 None.
+
+    꼭짓점은 [[x, y], ...] (base_footprint 기준 m). None 이면 공식 Nav2 설정을 그대로 쓴다.
+    트레일러가 있으면 뒤쪽을 트레일러 끝까지 늘린다.
+    """
+    if not spec:
+        return None
+    rear = -(BODY_REAR + spec['length'])
+    half = max(NAV2_HALF_WIDTH, spec['width'] / 2)
+    return [[NAV2_FRONT, half], [NAV2_FRONT, -half], [rear, -half], [rear, half]]
 
 
 def vehicle_urdf(name, namespace='', is_sim=False, cam_tilt_deg=8, vehicles=None):

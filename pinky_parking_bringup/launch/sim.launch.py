@@ -45,7 +45,8 @@ def setup(context):
             'name': robot['name'], 'domain_id': robot['domain_id'],
             'vehicle': robot['vehicle'], 'camera': arg('camera'), **pose}))
         nav_actions.append(include('pinky_parking_navigation', 'robot_nav.launch.py', {
-            'domain_id': robot['domain_id'], 'map': arg('map'), **pose}))
+            'domain_id': robot['domain_id'], 'map': arg('map'), 'vehicle': robot['vehicle'],
+            **pose}))
     if arg('nav').lower() == 'true':
         actions.append(TimerAction(period=float(arg('nav_delay')), actions=nav_actions))
     return actions
