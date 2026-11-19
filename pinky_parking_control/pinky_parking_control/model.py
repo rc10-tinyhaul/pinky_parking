@@ -18,8 +18,8 @@ FAILED = 'failed'
 CANCELED = 'canceled'
 FINISHED = (SUCCEEDED, FAILED, CANCELED)
 
-# 행동 단위
-ACTIONS = ('goto', 'park', 'unpark', 'lap')
+# 행동 단위 (Nav2 목표가 되는 것)
+ACTIONS = ('goto', 'park', 'unpark', 'lap', 'drive', 'lane_change', 'fuel')
 
 
 class TaskBusy(Exception):
@@ -28,6 +28,10 @@ class TaskBusy(Exception):
 
 class NotReady(Exception):
     """로봇의 Nav2 가 아직 켜지지 않았다."""
+
+
+class NotYet(Exception):
+    """기획에는 있지만 아직 만들지 않은 기능 (담당 이슈가 끝나면 채운다)."""
 
 
 def yaw_to_quaternion(yaw):

@@ -1,19 +1,23 @@
 """
-관제 서버: 행동 단위 HTTP API, 실시간 상태 WebSocket, 관제실 대시보드.
+관제 서버: 행동 단위 HTTP API, 실시간 상태 WebSocket, 관제센터 대시보드.
 
   ros2 run pinky_parking_control control_server
-  ros2 run pinky_parking_control control_server --port 8080 --robots <robots.yaml>
+  ros2 run pinky_parking_control control_server --layout arena --port 8080
 
 API (자세한 형식은 http://<host>:8080/docs):
-  기본 이동   POST /api/robots/{name}/goto {x, y, yaw}   /cancel   /stop    POST /api/stop
-  주차·출차   POST /api/robots/{name}/park {slot}        /unpark {slot}
-  주행        POST /api/robots/{name}/lap {route}
-  상태 조회   GET /api/robots   GET /api/robots/{name}   GET /api/log   WS /api/ws
-  배치        GET /api/layout (주차 칸, 경로, 출차 위치)  GET /api/map
-  팀 비밀번호 GET /api/auth (필요한지)  POST /api/auth/check
+  기본 이동   POST /api/robots/{name}/goto {x, y, yaw}  /teleop {linear, angular}
+              /cancel  /stop   POST /api/stop
+  주차·출차   POST /api/robots/{name}/park {slot}  /unpark {slot}  /park/precise (준비 중)
+  주행        POST /api/robots/{name}/drive {track}  /lane_change {to}  /lap {route}
+              /gap (준비 중)
+  주유        POST /api/robots/{name}/fuel {step: wait | enter | leave}
+  차종        PUT  /api/robots/{name}/vehicle {type: T00 | T10 | T15}
+  시나리오    GET /api/scenario   POST /api/scenario/{next | run | stop | confirm | reset}
+  상태 조회   GET /api/robots  /api/robots/{name}  /api/log  /api/layout  /api/map  WS /api/ws
+  팀 비밀번호 GET /api/auth   POST /api/auth/check
 
-환경변수 PINKY_CONTROL_PASSWORD 를 정하면 움직이는 명령(goto, park, unpark, lap)에
-X-Control-Password 머리글이 필요하다. 멈추는 명령(cancel, stop)은 언제나 받는다.
+환경변수 PINKY_CONTROL_PASSWORD 를 정하면 움직이는 명령에 X-Control-Password 머리글이 필요하다.
+멈추는 명령(cancel, stop, 시나리오 stop)은 언제나 받는다.
 """
 import argparse
 import asyncio
@@ -33,7 +37,9 @@ from fastapi import WebSocket
 from fastapi import WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pinky_parking_control.fleet import UnknownName
+from pinky_parking_control.layout import NotInLayout
 from pinky_parking_control.model import NotReady
+from pinky_parking_control.model import NotYet
 from pinky_parking_control.model import TaskBusy
 import yaml
 
@@ -48,10 +54,16 @@ def _call(fn, *args):
         raise HTTPException(404, str(error))
     except TaskBusy as error:
         raise HTTPException(409, str(error))
+    except NotInLayout as error:
+        raise HTTPException(400, str(error))
+    except NotYet as error:
+        raise HTTPException(501, str(error))
     except NotReady as error:
         raise HTTPException(503, str(error))
-    except ValueError as error:
+    except (ValueError, KeyError, TypeError) as error:
         raise HTTPException(422, str(error))
+    except RuntimeError as error:
+        raise HTTPException(409, str(error))
 
 
 def password_matches(expected, given):
@@ -61,16 +73,17 @@ def password_matches(expected, given):
     return hmac.compare_digest(str(given or '').encode(), str(expected).encode())
 
 
-def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, password=''):
+def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, password='',
+               scenario=None):
     """
     관제 API 를 만든다.
 
     password 를 주면 로봇을 움직이는 명령은 X-Control-Password 머리글이 맞아야 받는다.
-
     상태 보기(GET, WebSocket)와 멈추는 명령(cancel, stop)은 비밀번호 없이 받는다.
     """
-    app = FastAPI(title='Pinky 관제 API', version='0.1.0',
-                  description='로봇마다 행동 단위(기본 이동, 주차·출차, 주행, 상태 조회)로 명령합니다. '
+    app = FastAPI(title='Pinky 관제 API', version='0.2.0',
+                  description='로봇마다 행동 단위(이동, 주차·출차, 트랙 주행, 차선 변경, 주유, 차종, '
+                              '직접 운전)로 명령하고, 시연 시나리오를 단계별로 실행합니다. '
                               '팀 비밀번호를 정했으면 명령마다 X-Control-Password 머리글에 넣습니다.')
     period = 1.0 / max(1.0, float(status_rate_hz))
 
@@ -83,6 +96,17 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     def task_reply(task):
         return {'accepted': True, 'task': task.to_dict()}
+
+    def scenario_or_404():
+        if scenario is None:
+            raise HTTPException(404, '시나리오는 경기장 배치에서만 있습니다')
+        return scenario
+
+    def snapshot():
+        snap = fleet.snapshot()
+        if scenario is not None:
+            snap['scenario'] = scenario.status()
+        return snap
 
     # ---- 팀 비밀번호 ------------------------------------------------------
     @app.get('/api/auth', tags=['팀 비밀번호'])
@@ -108,12 +132,12 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     @app.get('/api/layout', tags=['상태 조회'])
     def layout():
-        return fleet.layout()
+        return fleet.layout_dict()
 
     @app.get('/api/map', tags=['상태 조회'])
     def map_():
         if map_data is None:
-            raise HTTPException(404, '지도가 없습니다')
+            raise HTTPException(404, '지도가 없습니다 (경기장 배치는 도면으로 그립니다)')
         return map_data
 
     @app.websocket('/api/ws')
@@ -121,7 +145,7 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
         await socket.accept()
         try:
             while True:
-                await socket.send_json(fleet.snapshot())
+                await socket.send_json(snapshot())
                 await asyncio.sleep(period)
         except (WebSocketDisconnect, RuntimeError):
             pass
@@ -130,6 +154,11 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
     @commands.post('/api/robots/{name}/goto', tags=['기본 이동'])
     def goto(name: str, pose: dict = Body(..., examples=[{'x': 0.3, 'y': -1.1, 'yaw': 0.0}])):
         return task_reply(_call(fleet.goto, name, pose))
+
+    @commands.post('/api/robots/{name}/teleop', tags=['기본 이동'])
+    def teleop(name: str, body: dict = Body(..., examples=[{'linear': 0.1, 'angular': 0.0}])):
+        """직접 운전. 0.5 초 안에 다시 보내지 않으면 멈춘다 (손을 떼면 선다)."""
+        return _call(fleet.teleop, name, body.get('linear', 0.0), body.get('angular', 0.0))
 
     # 멈추는 명령(취소, 정지)은 안전을 위해 비밀번호 없이도 받는다
     @app.post('/api/robots/{name}/cancel', tags=['기본 이동'])
@@ -142,6 +171,8 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     @app.post('/api/stop', tags=['기본 이동'])
     def stop_all():
+        if scenario is not None:
+            scenario.stop()
         return {'canceled': fleet.stop_all()}
 
     # ---- 주차·출차 -------------------------------------------------------
@@ -153,10 +184,65 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
     def unpark(name: str, body: dict = Body(..., examples=[{'slot': 'slot_10'}])):
         return task_reply(_call(fleet.unpark, name, str(body.get('slot', ''))))
 
+    @commands.post('/api/robots/{name}/park/precise', tags=['주차·출차'])
+    def park_precise(name: str):
+        """주차 칸 정밀 정렬 (준비 중: #7, #8)."""
+        return _call(fleet.pending, 'park_precise')
+
     # ---- 주행 ------------------------------------------------------------
+    @commands.post('/api/robots/{name}/drive', tags=['주행'])
+    def drive(name: str, body: dict = Body(..., examples=[{'track': 1, 'laps': 1}])):
+        return task_reply(_call(fleet.drive, name, body.get('track'), body.get('laps', 1)))
+
+    @commands.post('/api/robots/{name}/lane_change', tags=['주행'])
+    def lane_change(name: str, body: dict = Body(..., examples=[{'to': 2}])):
+        return task_reply(_call(fleet.lane_change, name, body.get('to')))
+
     @commands.post('/api/robots/{name}/lap', tags=['주행'])
     def lap(name: str, body: dict = Body(..., examples=[{'route': 'lap'}])):
         return task_reply(_call(fleet.lap, name, str(body.get('route', 'lap'))))
+
+    @commands.post('/api/robots/{name}/gap', tags=['주행'])
+    def gap(name: str):
+        """앞뒤 간격 조절 (준비 중: #12)."""
+        return _call(fleet.pending, 'gap')
+
+    # ---- 주유 ------------------------------------------------------------
+    @commands.post('/api/robots/{name}/fuel', tags=['주유'])
+    def fuel(name: str, body: dict = Body(..., examples=[{'step': 'wait'}])):
+        return task_reply(_call(fleet.fuel, name, str(body.get('step', ''))))
+
+    # ---- 차종 ------------------------------------------------------------
+    @commands.put('/api/robots/{name}/vehicle', tags=['차종'])
+    def vehicle(name: str, body: dict = Body(..., examples=[{'type': 'T10'}])):
+        return _call(fleet.set_vehicle, name, str(body.get('type', '')))
+
+    # ---- 시연 시나리오 ---------------------------------------------------
+    @app.get('/api/scenario', tags=['시연 시나리오'])
+    def scenario_status():
+        return scenario_or_404().status()
+
+    @commands.post('/api/scenario/next', tags=['시연 시나리오'])
+    def scenario_next(body: dict = Body(default={})):
+        """다음 단계 하나 (index 를 주면 그 단계)."""
+        return _call(scenario_or_404().start, body.get('index'), False)
+
+    @commands.post('/api/scenario/run', tags=['시연 시나리오'])
+    def scenario_run(body: dict = Body(default={})):
+        """다음 단계부터 끝까지 이어서."""
+        return _call(scenario_or_404().start, body.get('index'), True)
+
+    @commands.post('/api/scenario/confirm', tags=['시연 시나리오'])
+    def scenario_confirm():
+        return _call(scenario_or_404().confirm)
+
+    @commands.post('/api/scenario/reset', tags=['시연 시나리오'])
+    def scenario_reset():
+        return _call(scenario_or_404().reset)
+
+    @app.post('/api/scenario/stop', tags=['시연 시나리오'])
+    def scenario_stop():
+        return scenario_or_404().stop()
 
     app.include_router(commands)
     if static_dir is not None and Path(static_dir).is_dir():
@@ -169,17 +255,28 @@ def _share(package):
     return Path(get_package_share_directory(package))
 
 
+def _yaml(path):
+    return yaml.safe_load(Path(path).read_text(encoding='utf-8')) or {}
+
+
 def main():
     import rclpy
     from pinky_parking_bringup.robots import load_robots
     from pinky_parking_control.fleet import Fleet
+    from pinky_parking_control.layout import ARENA
+    from pinky_parking_control.layout import ArenaLayout
+    from pinky_parking_control.layout import choose_layout
+    from pinky_parking_control.layout import FactoryLayout
     from pinky_parking_control.mapdata import load_map
     from pinky_parking_control.robot_link import RobotLink
+    from pinky_parking_control.scenario import ScenarioRunner
     import uvicorn
 
     share = _share('pinky_parking_control')
     parser = argparse.ArgumentParser(description='관제 서버 (API + 대시보드)')
     parser.add_argument('--config', default=str(share / 'config/control.yaml'))
+    parser.add_argument('--arena', default=str(share / 'config/arena.yaml'))
+    parser.add_argument('--scenario', default=str(share / 'config/scenario.yaml'))
     parser.add_argument('--robots', default=str(_share('pinky_parking_bringup')
                                                 / 'config/robots.yaml'))
     parser.add_argument('--slots', default=str(_share('pinky_parking_docking')
@@ -188,23 +285,35 @@ def main():
                                                 / 'config/route.yaml'))
     parser.add_argument('--map', default=str(_share('pinky_parking_navigation')
                                              / 'maps/factory.yaml'))
+    parser.add_argument('--layout', choices=['auto', 'arena', 'factory'])
     parser.add_argument('--host')
     parser.add_argument('--port', type=int)
     args = parser.parse_args(rclpy.utilities.remove_ros_args(sys.argv)[1:])
 
-    config = yaml.safe_load(Path(args.config).read_text()) or {}
-    _, robots = load_robots(args.robots)
-    slots = yaml.safe_load(Path(args.slots).read_text())['slots']
-    routes = yaml.safe_load(Path(args.routes).read_text())['routes']
-    map_data = load_map(args.map) if Path(args.map).is_file() else None
+    config = _yaml(args.config)
+    world_name, robots = load_robots(args.robots)
+    arena = _yaml(args.arena)
+    kind = choose_layout(args.layout or config.get('layout', 'auto'), world_name)
+    if kind == ARENA:
+        layout, map_data = ArenaLayout(arena), None
+        scenario_data = _yaml(args.scenario)
+    else:
+        layout = FactoryLayout(_yaml(args.slots)['slots'], _yaml(args.routes)['routes'],
+                               config.get('unpark_exits'), arena['vehicles'])
+        map_data = load_map(args.map) if Path(args.map).is_file() else None
+        scenario_data = None
 
+    callsigns = (scenario_data or _yaml(args.scenario)).get('callsigns')
     # 팀 비밀번호는 저장소에 남지 않게 환경변수로만 받는다 (compose.yaml 이 호스트 값을 넘긴다)
     password = os.environ.get(PASSWORD_ENV, '')
-    fleet = Fleet(robots, slots, routes, config, RobotLink)
-    app = create_app(fleet, map_data, share / 'static', config.get('status_rate_hz', 10), password)
+    fleet = Fleet(robots, layout, config, RobotLink, callsigns)
+    scenario = ScenarioRunner(fleet, scenario_data) if scenario_data else None
+    app = create_app(fleet, map_data, share / 'static', config.get('status_rate_hz', 10),
+                     password, scenario)
     host, port = args.host or config.get('host', '0.0.0.0'), args.port or config.get('port', 8080)
     names = ', '.join(f'{r["name"]}(도메인 {r["domain_id"]})' for r in robots)
-    print(f'관제 서버: http://{host}:{port}  로봇: {names}', flush=True)
+    print(f'관제 서버: http://{host}:{port}  배치: {layout.to_dict()["name"]}  로봇: {names}',
+          flush=True)
     if password:
         print('팀 비밀번호: 켜짐 (명령을 보내려면 비밀번호가 필요합니다)', flush=True)
     else:
@@ -213,6 +322,8 @@ def main():
     try:
         uvicorn.run(app, host=host, port=int(port), log_level='warning')
     finally:
+        if scenario is not None:
+            scenario.stop()
         fleet.close()
     return 0
 

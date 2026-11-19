@@ -4,10 +4,16 @@ from pathlib import Path
 
 from pinky_parking_control.fleet import Fleet
 from pinky_parking_control.fleet import UnknownName
+from pinky_parking_control.layout import ArenaLayout
+from pinky_parking_control.layout import choose_layout
+from pinky_parking_control.layout import FactoryLayout
+from pinky_parking_control.layout import NotInLayout
+from pinky_parking_control.layout import Stadium
 from pinky_parking_control.mapdata import classify
 from pinky_parking_control.mapdata import load_map
 from pinky_parking_control.mapdata import read_pgm
 from pinky_parking_control.model import CANCELED
+from pinky_parking_control.model import NotYet
 from pinky_parking_control.model import parse_pose
 from pinky_parking_control.model import quaternion_to_yaw
 from pinky_parking_control.model import RUNNING
@@ -16,25 +22,42 @@ from pinky_parking_control.model import Task
 from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import TaskLog
 from pinky_parking_control.model import yaw_to_quaternion
+from pinky_parking_control.scenario import ScenarioRunner
 import pytest
+import yaml
 
+CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 ROBOTS = [{'name': 'pinky1', 'domain_id': 11}, {'name': 'pinky2', 'domain_id': 12}]
 SLOTS = {'slot_10': {'x': 0.3, 'y': -1.1, 'yaw': 0.0}}
 ROUTES = {'lap': [{'x': -0.8, 'y': 1.15, 'yaw': 3.14159}, {'x': 0.5, 'y': 1.0, 'yaw': 0.0}]}
-CONFIG = {'timeout_s': {'goto': 5}, 'unpark_exits': {'slot_10': {'x': 0.0, 'y': 0.0}}}
+CONFIG = {'timeout_s': {'goto': 5}, 'vehicles': {'pinky2': 'T10'},
+          'teleop': {'max_linear': 0.1, 'max_angular': 1.0}}
+CALLSIGNS = {'A': 'pinky1', 'B': 'pinky2'}
+
+
+def read_yaml(name):
+    return yaml.safe_load((CONFIG_DIR / name).read_text(encoding='utf-8'))
 
 
 class FakeLink:
-    """RobotLink 대신: Nav2 없이 작업을 받아 두기만 한다."""
+    """RobotLink 대신: Nav2 없이 작업을 받는다. auto=True 면 받자마자 성공한다."""
+
+    auto = False
 
     def __init__(self, name, domain_id, on_finish):
         self.name, self.domain_id, self.on_finish = name, domain_id, on_finish
         self.task, self.stopped, self.closed = None, False, False
+        self.pose = {'x': 0.405, 'y': 0.0, 'yaw': math.pi / 2}
+        self.twist = None
 
     def start(self, task):
         if self.task is not None and not self.task.done:
             raise TaskBusy('busy')
         self.task = task
+        if self.auto:
+            self.pose = dict(task.poses[-1])
+            task.finish(SUCCEEDED)
+            self.on_finish(task)
         return task
 
     def cancel(self, reason='취소했습니다'):
@@ -48,20 +71,44 @@ class FakeLink:
         self.stopped = True
         return self.cancel('정지 명령')
 
+    def teleop(self, linear, angular):
+        if self.task is not None and not self.task.done:
+            raise TaskBusy('busy')
+        self.twist = (linear, angular)
+        return {'linear': linear, 'angular': angular}
+
+    def teleop_watchdog(self, now, timeout_s):
+        pass
+
     def status(self):
-        return {'name': self.name, 'task': self.task.to_dict() if self.task else None}
+        return {'name': self.name, 'pose': self.pose,
+                'task': self.task.to_dict() if self.task else None}
 
     def close(self):
         self.closed = True
 
 
+class AutoLink(FakeLink):
+    auto = True
+
+
 @pytest.fixture
-def fleet():
-    f = Fleet(ROBOTS, SLOTS, ROUTES, CONFIG, FakeLink)
+def factory():
+    layout = FactoryLayout(SLOTS, ROUTES, {'slot_10': {'x': 0, 'y': 0}},
+                           read_yaml('arena.yaml')['vehicles'])
+    f = Fleet(ROBOTS, layout, CONFIG, FakeLink, CALLSIGNS)
     yield f
     f.close()
 
 
+@pytest.fixture
+def arena():
+    f = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, FakeLink, CALLSIGNS)
+    yield f
+    f.close()
+
+
+# ---- 모델 -------------------------------------------------------------------
 def test_quaternion_round_trip():
     for yaw in (-3.0, -1.2, 0.0, 0.7, 3.1):
         assert math.isclose(quaternion_to_yaw(*yaw_to_quaternion(yaw)), yaw, abs_tol=1e-9)
@@ -96,42 +143,126 @@ def test_task_log_keeps_newest_first():
     assert [t['target'] for t in log.recent()] == ['2', '1']
 
 
-def test_fleet_actions(fleet):
-    park = fleet.park('pinky1', 'slot_10')
-    assert park.action == 'park' and park.poses == [{'x': 0.3, 'y': -1.1, 'yaw': 0.0}]
-    assert park.timeout_s == 180.0
+# ---- 경기장 도면 ------------------------------------------------------------
+def test_stadium_follows_drawing():
+    track = Stadium(0.405, 0.6)
+    assert math.isclose(track.length, 1.2 + 2 * math.pi * 0.405)
+    x, y, yaw = track.point(0.3)                          # 오른쪽 직선 가운데, 위로 (반시계)
+    assert math.isclose(x, 0.405) and abs(y) < 1e-9 and math.isclose(yaw, math.pi / 2)
+    x, y, yaw = track.point(0.6 + math.pi * 0.405 / 2)    # 위 반원 꼭대기, 왼쪽으로
+    assert math.isclose(y, 0.3 + 0.405) and abs(x) < 1e-9 and math.isclose(abs(yaw), math.pi)
+    s, d = track.nearest(-0.405, 0.0)                     # 왼쪽 직선 가운데
+    assert d < 0.01 and math.isclose(s, 0.6 + math.pi * 0.405 + 0.3, abs_tol=0.01)
+
+
+def test_arena_actions_make_waypoints(arena):
+    lap = arena.drive('pinky1', 1)
+    assert lap.target == '1번 트랙' and len(lap.poses) == 12
+    assert math.isclose(lap.poses[-1]['x'], 0.405, abs_tol=0.01)   # 한 바퀴 돌아 제자리
+    arena.cancel('pinky1')
+    change = arena.lane_change('pinky1', 2)
+    assert len(change.poses) == 2
+    assert all(Stadium(0.595, 0.6).nearest(p['x'], p['y'])[1] < 0.01 for p in change.poses)
+    arena.cancel('pinky1')
+    assert arena.fuel('pinky1', 'wait').poses[0]['y'] == pytest.approx(0.17)
+    arena.cancel('pinky1')
+    assert arena.park('pinky1', 'slot_11').poses[0]['y'] == pytest.approx(0.15)
+    with pytest.raises(ValueError):
+        arena.fuel('pinky2', 'jump')
+    with pytest.raises(NotInLayout):
+        arena.drive('pinky2', 3)
+
+
+def test_vehicle_and_callsigns(arena):
+    assert arena.robot('pinky1')['vehicle']['type'] == 'T00'
+    assert arena.robot('pinky2')['vehicle']['length'] == pytest.approx(0.24)
+    assert arena.set_vehicle('pinky1', 'T15')['length'] == pytest.approx(0.29)
+    assert arena.robot('pinky1')['callsign'] == 'A'
+    with pytest.raises(UnknownName):
+        arena.set_vehicle('pinky1', 'T99')
+
+
+def test_teleop_is_limited_and_blocked_while_busy(arena):
+    assert arena.teleop('pinky1', 5.0, -9.0) == {'linear': 0.1, 'angular': -1.0}
+    arena.park('pinky1', 'slot_10')
     with pytest.raises(TaskBusy):
-        fleet.goto('pinky1', {'x': 0, 'y': 0})
-    lap = fleet.lap('pinky2', 'lap')
-    assert len(lap.poses) == 2 and lap.target == 'lap'
-
-    assert fleet.cancel('pinky1') is True
-    assert fleet.log.recent()[0]['state'] == CANCELED
-    goto = fleet.goto('pinky1', {'x': 1, 'y': 2, 'yaw': 0})
-    assert goto.target == '(1.00, 2.00)' and goto.timeout_s == 5.0
-
-    stopped = fleet.stop_all()
-    assert stopped == {'pinky1': True, 'pinky2': True}
-    assert all(link.stopped for link in fleet.links.values())
-    unpark = fleet.unpark('pinky1', 'slot_10')
-    assert unpark.poses == [{'x': 0.0, 'y': 0.0, 'yaw': 0.0}]
+        arena.teleop('pinky1', 0.1, 0.0)
 
 
-def test_fleet_unknown_names(fleet):
-    for call, args in ((fleet.park, ('pinky9', 'slot_10')), (fleet.park, ('pinky1', 'slot_99')),
-                       (fleet.lap, ('pinky1', 'nowhere')), (fleet.unpark, ('pinky1', 'slot_11'))):
+def test_pending_features_say_not_yet(arena):
+    for feature in ('gap', 'park_precise'):
+        with pytest.raises(NotYet):
+            arena.pending(feature)
+
+
+def test_choose_layout():
+    assert choose_layout('auto', 'pinky_factory.world') == 'factory'
+    assert choose_layout('auto', 'pinky_arena.world') == 'arena'
+    assert choose_layout('arena', 'pinky_factory.world') == 'arena'
+
+
+# ---- 공장 월드 --------------------------------------------------------------
+def test_factory_actions(factory):
+    park = factory.park('pinky1', 'slot_10')
+    assert park.action == 'park' and park.poses == [{'x': 0.3, 'y': -1.1, 'yaw': 0.0}]
+    with pytest.raises(TaskBusy):
+        factory.goto('pinky1', {'x': 0, 'y': 0})
+    assert len(factory.lap('pinky2', 'lap').poses) == 2
+    assert factory.cancel('pinky1') is True
+    assert factory.log.recent()[0]['state'] == CANCELED
+    assert factory.goto('pinky1', {'x': 1, 'y': 2}).timeout_s == 5.0
+    assert factory.stop_all() == {'pinky1': True, 'pinky2': True}
+    assert factory.unpark('pinky1', 'slot_10').poses == [{'x': 0.0, 'y': 0.0, 'yaw': 0.0}]
+    with pytest.raises(NotInLayout):
+        factory.drive('pinky2', 1)
+    with pytest.raises(NotInLayout):
+        factory.fuel('pinky2', 'wait')
+
+
+def test_unknown_names(factory):
+    for call, args in ((factory.park, ('pinky9', 'slot_10')), (factory.park, ('pinky1', 'x')),
+                       (factory.lap, ('pinky1', 'nowhere')), (factory.unpark, ('pinky1', 'y'))):
         with pytest.raises(UnknownName):
             call(*args)
 
 
-def test_snapshot_shape(fleet):
-    fleet.park('pinky1', 'slot_10')
-    snap = fleet.snapshot()
+def test_snapshot_shape(factory):
+    factory.park('pinky1', 'slot_10')
+    snap = factory.snapshot()
+    assert snap['layout'] == 'factory'
     assert [r['name'] for r in snap['robots']] == ['pinky1', 'pinky2']
     assert snap['robots'][0]['task']['goal'] == {'x': 0.3, 'y': -1.1, 'yaw': 0.0}
     assert snap['robots'][1]['task'] is None
 
 
+# ---- 시연 시나리오 ----------------------------------------------------------
+def test_scenario_runs_plan_in_order():
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, AutoLink, CALLSIGNS)
+    runner = ScenarioRunner(fleet, read_yaml('scenario.yaml'), poll_s=0.01)
+    try:
+        runner.start(run_all=True)
+        for _ in range(100):                              # 사람 확인 단계에서 기다린다
+            runner.wait(0.05)
+            if runner.waiting:
+                break
+        assert runner.waiting
+        states = [s['state'] for s in runner.status()['steps']]
+        assert states[:5] == ['done', 'done', 'skipped', 'done', 'done']
+        assert '#12' in runner.status()['steps'][2]['note']
+        runner.confirm()
+        runner.wait(5)
+        assert all(s['state'] in ('done', 'skipped') for s in runner.status()['steps'])
+        assert fleet.vehicle['pinky1'] == 'T15'
+        with pytest.raises(ValueError):
+            runner.start()                                 # 남은 단계 없음
+        runner.reset()
+        assert runner.status()['steps'][0]['state'] == 'ready'
+    finally:
+        runner.stop()
+        fleet.close()
+
+
+# ---- 지도 -------------------------------------------------------------------
 def test_pgm_and_classify():
     data = b'P5\n# comment\n3 1\n255\n' + bytes([0, 254, 205])
     width, height, maxval, pixels = read_pgm(data)
@@ -148,36 +279,50 @@ def test_load_repository_map():
     assert set(m['cells']) <= set('ofu')
 
 
-def test_http_api(fleet):
+# ---- HTTP API ---------------------------------------------------------------
+def client_for(fleet, **kwargs):
     pytest.importorskip('fastapi')
     pytest.importorskip('httpx')
     from fastapi.testclient import TestClient
     from pinky_parking_control.server import create_app
+    return TestClient(create_app(fleet, **kwargs))
 
-    client = TestClient(create_app(fleet, map_data={'width': 1}))
+
+def test_http_api(factory):
+    client = client_for(factory, map_data={'width': 1})
     reply = client.post('/api/robots/pinky1/park', json={'slot': 'slot_10'})
     assert reply.status_code == 200 and reply.json()['task']['action'] == 'park'
     assert client.post('/api/robots/pinky1/goto', json={'x': 0, 'y': 0}).status_code == 409
     assert client.post('/api/robots/pinky1/park', json={'slot': 'nope'}).status_code == 404
     assert client.post('/api/robots/pinky2/goto', json={'x': 'a'}).status_code == 422
+    assert client.post('/api/robots/pinky2/drive', json={'track': 1}).status_code == 400
+    assert client.post('/api/robots/pinky2/gap').status_code == 501
     assert client.post('/api/stop').json() == {'canceled': {'pinky1': True, 'pinky2': False}}
     assert client.get('/api/log').json()[0]['state'] == CANCELED
     assert client.get('/api/map').json() == {'width': 1}
+    assert client.get('/api/scenario').status_code == 404
     with client.websocket_connect('/api/ws') as socket:
         assert [r['name'] for r in socket.receive_json()['robots']] == ['pinky1', 'pinky2']
 
 
-def test_team_password(fleet):
-    pytest.importorskip('fastapi')
-    pytest.importorskip('httpx')
-    from fastapi.testclient import TestClient
-    from pinky_parking_control.server import create_app
-    from pinky_parking_control.server import password_matches
+def test_http_arena_and_scenario(arena):
+    data = read_yaml('scenario.yaml')
+    runner = ScenarioRunner(arena, data, poll_s=0.01)
+    client = client_for(arena, scenario=runner)
+    assert client.get('/api/layout').json()['kind'] == 'arena'
+    assert client.put('/api/robots/pinky1/vehicle', json={'type': 'T10'}).json()['type'] == 'T10'
+    assert client.post('/api/robots/pinky2/fuel', json={'step': 'wait'}).status_code == 200
+    assert client.post('/api/robots/pinky1/teleop', json={'linear': 1}).json()['linear'] == 0.1
+    assert len(client.get('/api/scenario').json()['steps']) == len(data['steps'])
+    assert client.post('/api/scenario/stop').status_code == 200
 
+
+def test_team_password(factory):
+    from pinky_parking_control.server import password_matches
     assert password_matches('', None) and password_matches('abc', 'abc')
     assert not password_matches('abc', 'abd') and not password_matches('abc', None)
 
-    client = TestClient(create_app(fleet, password='team-secret'))
+    client = client_for(factory, password='team-secret')
     assert client.get('/api/auth').json() == {'required': True}
     assert client.get('/api/robots').status_code == 200   # 보기는 열려 있다
     assert client.post('/api/robots/pinky1/park', json={'slot': 'slot_10'}).status_code == 401

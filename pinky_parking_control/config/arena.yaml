@@ -1,0 +1,38 @@
+# 경기장 도면(docs/arena 도면, 2026-11 팀 기획)을 좌표로 옮긴 것. 단위 m, rad.
+# 원점 = 트랙 타원 중심, x 오른쪽, y 위쪽. 차량은 반시계 방향으로 돈다.
+# 경기장 월드(#1)와 지도(#3)가 생기면 이 값과 맞춰 보고, 기본 설정 전환(#4) 때 알맞은 패키지로 옮긴다.
+name: 경기장
+board: {width: 2.0, height: 2.0}          # 실제 바닥 2000 x 2000 mm
+
+# 트랙은 직선 + 반원 두 개로 된 경기장 모양. radius 는 차선 중심선의 반원 반지름.
+# 직선 구간 600 mm 는 y = -0.3 ~ +0.3 (반원 중심이 (0, ±0.3)).
+straight: 0.6
+lane_width: 0.19                           # 차선 폭 190 mm (테이프 20 mm 포함 바깥선 사이)
+tape_width: 0.02
+tracks:
+  - {id: 1, name: 1번 트랙 (안쪽), radius: 0.405, vehicles: [T00]}
+  - {id: 2, name: 2번 트랙 (바깥쪽), radius: 0.595, vehicles: [T10, T15]}
+
+# 주차 칸 (초록). x, y = 칸 중심, yaw = 칸에 들어가 섰을 때 방향. marker = 칸 앞의 ArUco 번호(#2).
+slots:
+  slot_10: {x: 0.0, y: -0.15, yaw: 1.5708, width: 0.19, length: 0.30, marker: 10}
+  slot_11: {x: 0.0, y: 0.15, yaw: 1.5708, width: 0.19, length: 0.30, marker: 11}
+
+# 출차하면 칸에서 나와 1번 트랙 오른쪽 직선에 선다 (출차 명령 #9 전까지 임시).
+exits:
+  slot_10: {x: 0.405, y: -0.15, yaw: 1.5708}
+  slot_11: {x: 0.405, y: 0.15, yaw: 1.5708}
+
+# 주유구역 (빨강, 190 x 350 mm)과 진입 대기선 (파랑). 2번 트랙 왼쪽 직선 바깥.
+fuel:
+  zone: {id: 20, x: -0.995, y: -0.195, width: 0.19, length: 0.35, marker: 20}
+  wait_line: {id: 30, x: -0.995, y: 0.045, width: 0.19, marker: 30}
+  wait: {x: -0.995, y: 0.17, yaw: -1.5708}    # 대기선 앞에 멈추는 자리
+  enter: {x: -0.995, y: -0.195, yaw: -1.5708} # 주유구역 안
+  leave: {x: -0.595, y: -0.28, yaw: -1.5708}  # 2번 트랙 왼쪽 직선으로 복귀
+
+# 차종: 핑키프로 130 x 140 x 162 mm 에 트레일러를 단 전체 길이.
+vehicles:
+  T00: {length: 0.14, width: 0.13, trailer: 0.0, name: 트레일러 없음}
+  T10: {length: 0.24, width: 0.13, trailer: 0.10, name: 트레일러 10 cm}
+  T15: {length: 0.29, width: 0.13, trailer: 0.15, name: 트레일러 15 cm}

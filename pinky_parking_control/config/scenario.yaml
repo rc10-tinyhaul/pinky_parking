@@ -1,0 +1,62 @@
+# 시연 시나리오 (docs/plan.md 의 "전체 테스트 시연 순서"). 경기장 배치에서만 실행한다.
+# 한 단계 안에서 로봇끼리는 동시에, 같은 로봇의 행동은 적힌 순서대로 한다.
+# do: park, unpark, drive, lane_change, fuel, goto, vehicle(차종 바꾸기), confirm(사람 확인을 기다림)
+# pending: 아직 없는 기능에 기대는 단계. 실행하면 건너뛰고 기록에 남긴다.
+callsigns: {A: pinky1, B: pinky2}
+
+steps:
+  - title: 주차 구역에서 시작
+    detail: A(트레일러 없음)는 10번, B(10 cm)는 11번 칸에 선다
+    actions:
+      - {robot: A, do: vehicle, type: T00}
+      - {robot: B, do: vehicle, type: T10}
+      - {robot: A, do: park, slot: slot_10}
+      - {robot: B, do: park, slot: slot_11}
+
+  - title: 1바퀴 직진
+    detail: A는 1번 트랙, B는 2번 트랙을 한 바퀴
+    actions:
+      - {robot: A, do: unpark, slot: slot_10}
+      - {robot: B, do: unpark, slot: slot_11}
+      - {robot: A, do: drive, track: 1}
+      - {robot: B, do: lane_change, to: 2}
+      - {robot: B, do: drive, track: 2}
+
+  - title: 2번 트랙 간격 조절 1바퀴
+    detail: A와 B가 같은 2번 트랙에서 앞뒤 간격을 지키며 한 바퀴
+    pending: 앞뒤 간격 조절 (#12)
+
+  - title: A 차선 변경 후 주유구역으로
+    detail: A가 2번 트랙으로 옮겨 대기선(30)에 섰다가 주유구역(20)에 들어간다
+    actions:
+      - {robot: A, do: lane_change, to: 2}
+      - {robot: A, do: fuel, step: wait}
+      - {robot: A, do: fuel, step: enter}
+
+  - title: B 대기선에서 차례 기다리기
+    detail: A가 주유구역 안에 있는 동안 B는 대기선(30) 앞에 선다
+    actions:
+      - {robot: B, do: fuel, step: wait}
+
+  - title: A 트레일러 바꾸기
+    detail: A 주유가 끝나면 사람이 A에 15 cm 트레일러를 단다
+    actions:
+      - {robot: A, do: confirm, text: "A에 15 cm 트레일러를 달았나요?"}
+      - {robot: A, do: vehicle, type: T15}
+      - {robot: A, do: fuel, step: leave}
+
+  - title: B 주유 후 제자리 주차
+    detail: B가 주유구역에 들어갔다 나와 11번 칸으로
+    actions:
+      - {robot: B, do: fuel, step: enter}
+      - {robot: B, do: fuel, step: leave}
+      - {robot: B, do: park, slot: slot_11}
+
+  - title: A(15 cm) 2번 트랙 1바퀴
+    actions:
+      - {robot: A, do: drive, track: 2}
+
+  - title: A 주차하고 종료
+    detail: A(15 cm)는 10번, B(10 cm)는 11번 칸에서 끝
+    actions:
+      - {robot: A, do: park, slot: slot_10}

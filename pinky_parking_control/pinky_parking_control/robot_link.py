@@ -58,6 +58,7 @@ class RobotLink:
         self._handle = None
         self._cancel_wanted = False
         self.pose, self.pose_time = None, 0.0
+        self.teleop_time = 0.0   # 마지막 직접 운전 명령 시각 (0 = 직접 운전 아님)
         self.speed = {'linear': 0.0, 'angular': 0.0}
 
         self.context = Context()
@@ -183,8 +184,30 @@ class RobotLink:
     def stop(self):
         """작업을 취소하고 바로 멈춘다 (속도 0)."""
         canceled = self.cancel('정지 명령')
+        with self._lock:
+            self.teleop_time = 0.0
         self.cmd_vel.publish(Twist())
         return canceled
+
+    def teleop(self, linear, angular):
+        """직접 운전 속도를 낸다. Nav2 작업 중이면 거절한다 (둘이 cmd_vel 을 다투지 않게)."""
+        with self._lock:
+            if self.task is not None and not self.task.done:
+                raise TaskBusy(f'{self.name} 은(는) {self.task.action} 작업 중입니다. 먼저 취소하세요')
+            self.teleop_time = time.time()
+        msg = Twist()
+        msg.linear.x, msg.angular.z = float(linear), float(angular)
+        self.cmd_vel.publish(msg)
+        return {'linear': msg.linear.x, 'angular': msg.angular.z}
+
+    def teleop_watchdog(self, now, timeout_s):
+        """직접 운전 명령이 timeout_s 동안 끊기면 한 번 멈춘다."""
+        with self._lock:
+            stale = self.teleop_time and now - self.teleop_time > timeout_s
+            if stale:
+                self.teleop_time = 0.0
+        if stale:
+            self.cmd_vel.publish(Twist())
 
     def status(self):
         now = time.time()
@@ -197,6 +220,7 @@ class RobotLink:
                 'pose': dict(self.pose) if self.pose else None,
                 'pose_age_s': round(now - self.pose_time, 1) if self.pose else None,
                 'speed': {k: round(v, 3) for k, v in self.speed.items()},
+                'teleop': bool(self.teleop_time),
                 'task': self.task.to_dict(now) if self.task else None,
             }
 
