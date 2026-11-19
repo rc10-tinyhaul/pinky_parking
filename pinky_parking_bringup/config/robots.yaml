@@ -6,4 +6,4 @@
 world_name: pinky_factory.world
 robots:
   - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: basic}
-  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: basic}
+  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: trailer10}
