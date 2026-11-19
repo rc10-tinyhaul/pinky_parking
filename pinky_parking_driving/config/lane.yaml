@@ -1,0 +1,20 @@
+# 카메라 차선 추종 (lane_follow). 실물에서는 코드 대신 이 값을 맞춘다.
+camera:                 # 로봇 기준(base_footprint). 실물은 자로 재서 넣는다
+  height: 0.063         # 바닥에서 카메라까지 [m]
+  x: 0.033              # 로봇 중심에서 카메라까지 앞쪽 거리 [m]
+  tilt_deg: 8.0         # 아래로 기울어진 각도 (pinky_parking_gazebo 의 cam_tilt_deg 와 같게)
+  hfov_deg: 66.0        # 수평 화각
+detect:
+  scale: 0.25           # 영상을 이 비율로 줄여 계산 (속도)
+  dark_threshold: 100   # 밝기(0~255)가 이보다 어두우면 테이프
+  max_range: 0.5        # 이보다 먼 바닥은 쓰지 않음 [m]
+lane:
+  width: 0.19           # 테이프 중심 사이 거리 [m]
+  near: 0.17            # 차선을 찾기 시작하는 앞 거리 [m]
+  lookahead: 0.26       # 따라갈 중심점의 앞 거리 [m]
+  step: 0.02            # 띠 간격 [m]
+control:
+  speed: 0.10           # 직선 속도 [m/s]
+  max_angular: 1.5      # 최대 회전 속도 [rad/s]
+  curve_slowdown: 0.15  # 곡률에 따라 감속: speed / (1 + curve_slowdown * |곡률|)
+  lost_frames: 15       # 차선을 이만큼 연속으로 못 찾으면 정지

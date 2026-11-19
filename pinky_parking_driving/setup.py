@@ -26,5 +26,6 @@ setup(
     },
     entry_points={'console_scripts': [
         'lap = pinky_parking_driving.lap:main',
+        'lane_follow = pinky_parking_driving.lane_follow:main',
     ]},
 )
