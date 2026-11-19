@@ -20,6 +20,27 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 
 - 코드를 바꾸면 `colcon test`와 smoke test를 통과시킨 뒤 커밋합니다.
 - 파이썬 코드 수정은 바로 반영됩니다. 새 파일(launch, config, 월드)이나 새 실행 파일(`setup.py`의 `console_scripts`)을 추가했으면 colcon build를 다시 합니다.
+- `colcon test`는 코드 스타일 검사(`ament_flake8`, `ament_pep257`)뿐입니다. 동작은 smoke test가 확인합니다. 패키지 하나만 검사하려면:
+
+  ```bash
+  colcon test --packages-select pinky_parking_docking --event-handlers console_direct+
+  ```
+
+- `./run.sh`는 대화형 셸을 엽니다. 셸 없이 호스트에서 명령 하나를 실행하려면(AI 도구 등) 컨테이너를 띄운 뒤 `exec`를 씁니다. `exec`는 ROS 환경을 불러오지 않으므로 직접 source 합니다(smoke test는 스스로 불러옵니다).
+
+  ```bash
+  ./run.sh up
+  docker compose exec -T sim bash -c 'source /opt/ros/jazzy/setup.bash && source install/setup.bash && colcon test --packages-select pinky_parking_docking'
+  docker compose exec -T sim src/pinky_parking/scripts/smoke_test.sh
+  ```
+
+- smoke test는 시뮬레이션을 직접 띄우므로, 같은 컨테이너에 다른 시뮬레이션이 떠 있으면 먼저 끕니다. 실패하면 `park=`, `lap=` 뒤의 종료 코드(1 = 인자 오류, 2 = 시간 초과, 3 = Nav2 실패)와 로그(`/tmp/pinky_smoke/sim.log`)를 봅니다. 환경변수 `CAMERA`, `GOAL_TIMEOUT`, `LOG_DIR`로 조정합니다.
+
+## Docker 환경
+
+- 저장소는 컨테이너의 `/ws/src/pinky_parking`에 연결되어 있어 고친 코드와 저장한 지도는 호스트에 남습니다. `/ws/build`, `/ws/install`은 컨테이너 안에만 있어 `./run.sh down` 뒤에는 이미지를 빌드했을 때의 상태로 돌아갑니다. 새 파일·실행 파일을 추가한 뒤 컨테이너를 새로 띄웠으면 colcon build를 다시 합니다.
+- `run.sh`는 이미지가 없을 때만 빌드합니다. `docker/Dockerfile`, `package.xml`의 의존성, `pinky_parking.repos`를 바꿨으면 `docker compose build`를 직접 실행합니다.
+- 컨테이너는 호스트와 네트워크를 공유하지 않습니다(같은 네트워크의 실물 로봇과 섞이지 않게). 호스트의 `ros2` 명령으로는 시뮬레이션 토픽이 보이지 않으므로, 모든 터미널은 `./run.sh`로 같은 컨테이너에 들어갑니다.
 
 ## 패키지와 범위
 
@@ -38,6 +59,11 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 ## 구조와 설계
 
 - 로봇마다 `ROS_DOMAIN_ID`를 나눕니다(pinky1 = 11, pinky2 = 12, 관제 PC = 0 예정). 각 도메인의 토픽은 로봇 한 대일 때와 같은 이름(`/scan`, `/odom`, `/cmd_vel`)이라 공식 `pinky_navigation` launch를 그대로 씁니다. 실물도 같은 구조로 운용합니다.
+- Gazebo는 하나이고 ROS 도메인과 무관합니다. Gazebo 안에서만 토픽에 `<name>/` 접두어를 붙여 로봇을 구분하고(`pinky1/scan`), 로봇마다 그 도메인에서 실행한 `ros_gz_bridge`가 접두어를 떼어 넘깁니다(`pinky_parking_gazebo/sim.py`의 `bridge_entries`). 브리지할 토픽을 추가할 때는 여기에 넣습니다.
+- 로봇 대수·도메인·위치는 `pinky_parking_bringup/config/robots.yaml`에서만 정합니다. 위치는 Gazebo 스폰 위치이자 AMCL 초기 위치로 함께 쓰입니다(지도를 월드 원점에서 만들어 지도 좌표 = 월드 좌표).
+- 다른 도메인에서 노드를 띄우는 방법은 두 가지입니다. 직접 만든 `Node`에는 `additional_env`로 `ROS_DOMAIN_ID`를 줍니다(`spawn_robot.launch.py`). 남의 launch 파일을 통째로 띄울 때는 포함(include)하면 도메인이 적용되지 않으므로, 별도 `ros2 launch` 프로세스로 실행합니다(`robot_nav.launch.py`).
+- Nav2 파라미터는 공식 `nav2_params.yaml`을 읽어 필요한 값만 바꾼 임시 파일로 넘깁니다(`pinky_parking_navigation/params.py`). Nav2 파라미터를 바꿀 때는 이 함수에서 덮어씁니다.
+- `sim.launch.py`는 Gazebo와 로봇을 띄운 뒤 `nav_delay`(15초) 뒤에 Nav2를 시작합니다. 명령(`park`, `lap`)은 Nav2가 켜질 때까지 스스로 기다립니다.
 - 도메인 사이는 `domain_bridge`로 잇습니다(예정). 액션(Nav2 `navigate_to_pose`)과 `/tf`는 도메인을 건너지 못하므로, 목표 전송은 그 로봇의 도메인 안에서 하고 관제 PC는 map 좌표 상태 토픽을 받습니다.
 - [pinky_pro](https://github.com/pinklab-art/pinky_pro)(로봇 모델, 월드, Nav2 설정)는 의존성입니다. `pinky_parking.repos`에 고정한 버전을 `vcs import`로 받아 빌드하며, 이 저장소에는 들어 있지 않습니다. 받아 온 파일을 고쳐도 저장소에 남지 않으므로, 동작을 바꿀 때는 이 저장소의 코드에서 덮어씁니다(예: `pinky_parking_gazebo`의 `sim.sim_urdf`, `robot_nav.launch.py`). 수정이 커지면 조직에 포크하고 `.repos`의 주소를 바꿉니다.
 
@@ -48,6 +74,8 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 - LiDAR 프레임은 로봇 정면 기준 180° 돌아 있습니다.
 - Nav2 도착 허용 오차는 0.25 m입니다. 경기장 차선의 빈 공간은 170 mm(차선 폭 190 mm, 테이프 20 mm)라, 차선 주행과 주차에는 별도 정밀화(카메라 차선 추종, 미리 만든 경로를 `FollowPath`로 주기, 차선 마스크 등)가 필요할 것으로 봅니다. 방식은 아직 정하지 않았습니다.
 - `nav2_simple_commander`의 `BasicNavigator.waitUntilNav2Active()`는 기본값으로 초기 위치 (0, 0)을 보내 AMCL 위치를 덮어씁니다. `localizer='robot_localization'`을 줍니다(`park.py` 참고).
+- 지금의 주차 칸(`slots.yaml`)과 경로(`route.yaml`) 좌표, 지도(`maps/factory`)는 공식 공장 월드 기준의 임시 값입니다. 경기장 월드가 생기면 함께 바꿉니다. smoke test가 `slot_10`과 `lap` 경로를 쓰므로 이름을 바꾸면 `scripts/smoke_test.sh`도 고칩니다.
+- 지도는 로봇 한 대만 띄워 만듭니다(`pinky_parking_navigation/README.md`의 "지도 만들기").
 - 파이썬 가상환경(`.venv`)이 켜진 셸에서는 colcon 빌드가 실패합니다(`catkin_pkg` 없음).
 - Intel + NVIDIA 노트북에서 `/dev/dri` 전체를 컨테이너에 넘기면 화면이 깨집니다. `run.sh`가 알아서 고릅니다.
 - 실물 로봇을 움직이는 명령(bringup, 목표 전송, 주행)은 사람이 확인한 뒤 실행합니다. 기본은 시뮬레이션입니다.
