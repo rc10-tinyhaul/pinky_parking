@@ -21,6 +21,11 @@ services:
     environment:
       - DISPLAY=${DISPLAY:-}
       - QT_X11_NO_MITSHM=1
+      # 관제 대시보드 팀 비밀번호. 호스트에서 정한 값을 넘긴다 (docs/remote_access.md). 비우면 비밀번호 없음.
+      - PINKY_CONTROL_PASSWORD=${PINKY_CONTROL_PASSWORD:-}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw      # Gazebo·RViz 창
       - .:/ws/src/pinky_parking               # 저장소 연결: 고친 코드·저장한 지도가 호스트에 남음
+    ports:
+      # 관제 대시보드·API (pinky_parking_control). HTTP 만 열고 ROS 통신(DDS)은 컨테이너 안에 둔다.
+      - "${CONTROL_PORT:-8080}:8080"
