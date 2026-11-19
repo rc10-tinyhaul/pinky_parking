@@ -5,11 +5,14 @@
   ROS_DOMAIN_ID=11 ros2 run pinky_parking_driving lane_follow --speed 0.08 --timeout 120
 
 대상 로봇은 ROS_DOMAIN_ID 로 고른다. /camera/image_raw 를 받아 /cmd_vel 을 낸다.
-차선을 계속 못 찾으면 멈추고 종료 코드 2, --timeout 이 지나면 멈추고 0, Ctrl-C 도 멈추고 0.
+차선을 계속 못 찾으면 멈추고 종료 코드 2, --timeout 이 지나면 멈추고 0.
+Ctrl-C(SIGINT), kill(SIGTERM), 터미널 닫힘(SIGHUP)도 멈춤 명령을 보낸 뒤 0 으로 끝난다.
+바퀴 제어는 마지막 속도 명령을 유지하므로, 멈춤 명령 없이 끝나면 로봇이 계속 달린다.
 """
 import argparse
 import math
 from pathlib import Path
+import signal
 import sys
 import time
 
@@ -24,6 +27,7 @@ from pinky_parking_driving.lane import pursuit_curvature
 from pinky_parking_driving.lane import tape_mask
 import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Image
 import yaml
 
@@ -99,16 +103,18 @@ def main():
     config = load_config(args.config)
     if args.speed is not None:
         config['control']['speed'] = args.speed
-    rclpy.init()
+    # rclpy 기본 신호 처리는 신호를 받자마자 통신을 닫아 멈춤 명령을 보낼 수 없다.
+    # 신호는 직접 받아 표시만 하고, 루프를 빠져나온 뒤 멈춤 명령을 보낸다.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    stop_signals = []
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda signum, frame: stop_signals.append(signum))
     node = LaneFollower(config)
     start = time.time()
-    try:
-        while rclpy.ok() and not node.failed:
-            rclpy.spin_once(node, timeout_sec=0.1)
-            if args.timeout and time.time() - start > args.timeout:
-                break
-    except KeyboardInterrupt:
-        pass
+    while not stop_signals and not node.failed:
+        rclpy.spin_once(node, timeout_sec=0.1)
+        if args.timeout and time.time() - start > args.timeout:
+            break
     node.stop()
     node.destroy_node()
     rclpy.try_shutdown()
