@@ -18,3 +18,15 @@ control:
   max_angular: 1.5      # 최대 회전 속도 [rad/s]
   curve_slowdown: 0.15  # 곡률에 따라 감속: speed / (1 + curve_slowdown * |곡률|)
   lost_frames: 15       # 차선을 이만큼 연속으로 못 찾으면 정지
+change:                 # 차선 변경 (lane_follow --lane N 일 때). 거리는 주행 거리 [m]
+  lanes: 2              # 차선 수. 번호가 클수록 오른쪽 (반시계 방향 주행)
+  straight_curvature: 0.8   # 따라가는 곡률 [1/m] 이 이보다 작으면 직선
+  straight_frames: 5    # 직선이 이만큼 이어지면 "곡선이 끝나고 직선이 시작됨"
+  start_after: 0.0      # 직선이 시작되고 이만큼 간 뒤 변경 시작
+  max_start_distance: 0.10  # 직선이 시작되고 이보다 늦으면 이번 직선은 건너뜀 (변경에 약 0.5 m 필요)
+  done_offset: 0.015    # 끝: 새 차선 중심선까지 수직 거리
+  done_near: 0.04       # 끝: 바로 앞 차선 중심의 옆 거리
+  done_frames: 5
+  max_distance: 0.7     # 이만큼 가도 안 끝나면: 새 차선 안이면 넘기고, 아니면 멈춤
+  handover_offset: 0.05
+  wait_distance: 10.0   # 이만큼 가도 직선 시작을 못 만나면 요청 실패 (약 2바퀴)
