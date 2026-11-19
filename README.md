@@ -94,6 +94,10 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 
 `ROS_DOMAIN_ID`로 대상 로봇을 고릅니다. 각 패키지의 인자와 설정은 패키지 README를 참고하세요.
 
+### 실물 로봇
+
+절차는 [docs/real_robot.md](docs/real_robot.md)에 있습니다. 로봇에서 공식 bringup과 속도 명령 감시(`cmd_vel_watchdog`)를 띄우고, PC에서는 `PINKY_NETWORK=host ./run.sh`로 들어가 Nav2를 `use_sim_time:=false`로 실행합니다. 첫 시험은 `max_speed:=0.1` 이하로 합니다.
+
 ### 문제 해결
 
 | 증상 | 조치 |
@@ -115,7 +119,7 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 
 ```
 pinky_parking/
-├── docs/                  전체 기획, 경기장 도면
+├── docs/                  전체 기획, 경기장 도면, 실물 로봇 운용
 ├── pinky_parking_*/       ROS 2 패키지 (위 표)
 ├── docker/                Dockerfile, entrypoint
 ├── run.sh                 Docker 실행 (그래픽 자동 감지)

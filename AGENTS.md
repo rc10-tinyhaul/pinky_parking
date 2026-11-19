@@ -79,4 +79,5 @@ src/pinky_parking/scripts/smoke_test.sh    # 기본 사이클(park, lap) 검사,
 - 지도는 로봇 한 대만 띄워 만듭니다(`pinky_parking_navigation/README.md`의 "지도 만들기").
 - 파이썬 가상환경(`.venv`)이 켜진 셸에서는 colcon 빌드가 실패합니다(`catkin_pkg` 없음).
 - Intel + NVIDIA 노트북에서 `/dev/dri` 전체를 컨테이너에 넘기면 화면이 깨집니다. `run.sh`가 알아서 고릅니다.
-- 실물 로봇을 움직이는 명령(bringup, 목표 전송, 주행)은 사람이 확인한 뒤 실행합니다. 기본은 시뮬레이션입니다.
+- 실물 로봇을 움직이는 명령(bringup, 목표 전송, 주행)은 사람이 확인한 뒤 실행합니다. 기본은 시뮬레이션입니다. 실물 절차는 `docs/real_robot.md`입니다.
+- 공식 구동 노드는 속도 명령 시간 제한이 없어, 명령이 끊기면 실물 로봇이 마지막 속도로 계속 달립니다. 실물에서는 `cmd_vel_watchdog`를 로봇에서 함께 띄웁니다. 실물에 쓸 명령을 만들 때는 주행 중 속도 명령을 계속 보내고, 끝날 때 0을 보냅니다.
