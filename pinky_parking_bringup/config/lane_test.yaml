@@ -1,0 +1,5 @@
+# 차선 주행 시험용: 차선 시험 트랙에 pinky1 한 대를 1번 차선 직선 구간에 띄운다 (반시계 방향).
+# Nav2 는 쓰지 않는다:  sim.launch.py robots:=<이 파일> nav:=false
+world_name: lane_test.sdf
+robots:
+  - {name: pinky1, domain_id: 11, x: 0.405, y: 0.0, yaw: 1.5708}

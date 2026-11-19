@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.py')),
         ('share/' + package_name + '/worlds', glob('worlds/*')),
+        ('share/' + package_name + '/config', glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,4 +26,8 @@ setup(
             'pytest',
         ],
     },
+    entry_points={'console_scripts': [
+        'make_lane_world = pinky_parking_gazebo.lane_track:main',
+        'track_check = pinky_parking_gazebo.track_check:main',
+    ]},
 )

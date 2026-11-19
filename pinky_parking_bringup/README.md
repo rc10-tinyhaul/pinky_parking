@@ -32,7 +32,7 @@ robots:
 | `domain_id` | 이 로봇의 `ROS_DOMAIN_ID` |
 | `x`, `y` [m], `yaw` [rad] | 스폰 위치이자 AMCL 초기 위치 |
 
-`config/pinky1_only.yaml`은 지도 작성용(pinky1 한 대)입니다.
+`config/pinky1_only.yaml`은 지도 작성용(pinky1 한 대)입니다. `config/lane_test.yaml`은 차선 시험 트랙(`pinky_parking_gazebo` README의 "차선 시험 트랙")에 pinky1 한 대를 띄웁니다.
 
 ## 실행 파일
 

@@ -1,0 +1,10 @@
+# 차선 시험 트랙 (worlds/lane_test.sdf 를 만드는 치수). 단위 m.
+# 모양: 직선 두 개 + 반원 두 개(경기장 도면 docs/arena_map_2000x2000.jpg 의 트랙과 같은 치수).
+# 원점 = 트랙 중심, 직선은 y 방향, 반시계 방향 주행.
+# 바꾼 뒤:  ros2 run pinky_parking_gazebo make_lane_world > src/pinky_parking/pinky_parking_gazebo/worlds/lane_test.sdf
+straight_length: 0.6          # 직선 구간 길이
+lane_radii: [0.405, 0.595]    # 차선 중심선의 곡선 반경 (1번 = 안쪽, 2번 = 바깥쪽)
+lane_width: 0.19              # 테이프 중심 사이 거리
+tape_width: 0.02
+tape_color: [0.02, 0.02, 0.02]    # RGB 0~1
+floor_color: [0.85, 0.85, 0.85]

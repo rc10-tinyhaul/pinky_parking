@@ -36,6 +36,28 @@ Gazebo 월드를 띄웁니다.
 
 LiDAR 프레임은 로봇 정면 기준 180° 돌아 있습니다.
 
+## 차선 시험 트랙
+
+차선 주행 알고리즘을 시험하는 월드입니다(경기장이 아님). 평평한 바닥에 테이프 선만 있는 2차선 타원이며, 치수는 경기장 도면(`docs/arena_map_2000x2000.jpg`)과 같습니다: 직선 0.6 m, 차선 중심 반경 0.405 m·0.595 m, 차선 폭 190 mm, 테이프 20 mm. 원점이 트랙 중심이고 반시계 방향으로 달립니다.
+
+```bash
+ros2 launch pinky_parking_bringup sim.launch.py nav:=false \
+  robots:=$(ros2 pkg prefix pinky_parking_bringup)/share/pinky_parking_bringup/config/lane_test.yaml
+ROS_DOMAIN_ID=11 ros2 run pinky_parking_driving lane_follow
+ros2 run pinky_parking_gazebo track_check pinky1 --laps 3      # 다른 터미널에서 채점
+```
+
+| 실행 파일 | 설명 |
+|---|---|
+| `track_check NAME [--laps N] [--lane K] [--timeout S]` | Gazebo의 실제 위치로 바퀴 수, 중심선에서 벗어난 평균·최대 거리, 차체(폭 130 mm)가 테이프에 닿은 시간 비율을 출력합니다. N바퀴를 돌면 종료 코드 0. `ROS_DOMAIN_ID`와 무관합니다 |
+| `make_lane_world [--track FILE]` | 치수 파일로 월드 SDF를 출력합니다 |
+
+치수는 `config/lane_track.yaml`에 있습니다. 바꾸면 월드 파일을 다시 만들고 빌드합니다(`colcon test`가 월드 파일과 치수가 맞는지 검사합니다).
+
+```bash
+ros2 run pinky_parking_gazebo make_lane_world > src/pinky_parking/pinky_parking_gazebo/worlds/lane_test.sdf
+```
+
 ## 월드 추가
 
 `worlds/`에 `.sdf`(또는 `.world`) 파일을 두고 다시 빌드한 뒤, `world_name:=<파일 이름>`으로 실행합니다.
