@@ -23,6 +23,45 @@
 
 **왜 이렇게 만들었나요?** Nav2 명령(액션)은 도메인을 건너가지 못합니다. 그래서 서버 하나가 로봇마다 그 로봇의 채널(도메인)에 직접 들어가 명령합니다. `domain_bridge`(#13) 없이도 지금 바로 동작합니다.
 
+## 관제센터 여는 법
+
+| 방법 | 언제 | 필요한 것 | 로봇 |
+|---|---|---|---|
+| **A. 데모로 화면만 보기** | 화면과 버튼을 눌러 보고 싶을 때 | Git, Python (Windows·Mac·Linux 모두) | 가짜 로봇 |
+| **B. 시뮬레이션과 연결하기** | 진짜로 로봇을 움직여 보고 싶을 때 | Linux, Docker | 시뮬레이션 로봇 |
+
+### A. 데모로 화면만 보기 (ROS 없어도 됨)
+
+| 순서 | 명령 | 무엇을 하나요 | 왜 |
+|---|---|---|---|
+| 1 | `git clone https://github.com/rc10-tinyhaul/pinky_parking.git` | 저장소를 내 PC로 받습니다 | 처음 한 번만. 이미 받았으면 `git pull` |
+| 2 | `cd pinky_parking` | 받은 폴더로 들어갑니다 | 다음 명령을 이 폴더에서 합니다 |
+| 3 | `git switch henry/control-api` | 관제센터가 있는 브랜치로 바꿉니다 | PR #16이 `dev`에 합쳐지면 이 단계는 필요 없습니다 |
+| 4 | `cd pinky_parking_control/static` | 화면 파일이 있는 폴더로 갑니다 | 이 폴더를 웹 페이지로 열어야 합니다 |
+| 5 | `python -m http.server 8765` | 작은 웹 서버를 켭니다 | 브라우저가 화면 파일을 읽게 합니다. **창을 끄지 말고 둡니다** |
+| 6 | 브라우저에서 `http://localhost:8765/?demo` | 관제센터가 열립니다 | `?demo`는 "가짜 로봇으로 보여 줘"라는 뜻입니다 |
+
+- 다른 주소: `?demo=factory`는 공장 월드, `?demo=lock`은 팀 비밀번호 잠금 화면(비밀번호 `demo`)입니다.
+- 끄기: 5번을 켠 창에서 `Ctrl + C`를 누릅니다.
+- `python`이 없다고 나오면 [python.org](https://www.python.org/downloads/)에서 설치합니다. Mac·Linux에서는 `python3`으로 씁니다.
+- `?demo` 없이 열면 진짜 서버를 찾느라 "연결 중"에 머뭅니다. 정상입니다.
+
+### B. 시뮬레이션과 연결하기 (Linux + Docker)
+
+| 순서 | 어디서 | 명령 | 왜 |
+|---|---|---|---|
+| 1 | 저장소 폴더 | `git switch henry/control-api` | 관제센터 브랜치로 바꿉니다 (`dev`에 합쳐진 뒤에는 필요 없음) |
+| 2 | 저장소 폴더 | `docker compose build` | 새 부품(FastAPI 등)을 설치합니다. 처음 한 번 |
+| 3 | 저장소 폴더 | `./run.sh` | 시뮬레이션 컨테이너에 들어갑니다 |
+| 4 | 컨테이너 안 | `colcon build --symlink-install --packages-up-to pinky_parking_control` | 관제 패키지를 설치합니다 |
+| 5 | 컨테이너 안 | `source install/setup.bash` | 설치한 것을 지금 터미널에 알립니다 |
+| 6 | 컨테이너 안 | `ros2 launch pinky_parking_bringup sim.launch.py` | 시뮬레이션 로봇을 켭니다 |
+| 7 | 새 터미널에서 `./run.sh` 후 | `source install/setup.bash` → `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 |
+| 8 | 그 PC 브라우저 | `http://localhost:8080` | 진짜 관제센터가 열립니다 (`?demo` 없이) |
+
+- 지금 시뮬레이션은 공장 월드라서 공장 지도가 나옵니다. 경기장 월드(#1)가 생기면 자동으로 경기장 화면이 됩니다.
+- 같은 와이파이의 다른 PC에서 열거나 팀 비밀번호를 정하려면 [docs/remote_access.md](../docs/remote_access.md)를 봅니다.
+
 ## 배치: 경기장과 공장 월드
 
 | 배치 | 언제 | 좌표 |
@@ -129,7 +168,7 @@
 | 5 | 호스트 브라우저에서 `http://localhost:8080` | 관제센터를 엽니다 | `compose.yaml`이 8080을 열어 둡니다 |
 
 - API 설명서: `http://localhost:8080/docs` (버튼을 눌러 직접 시험할 수 있습니다)
-- 서버 없이 화면만: `static` 폴더를 웹 서버로 열고 주소 끝에 `?demo` (경기장), `?demo=factory` (공장 월드), `?demo=lock` (비밀번호 `demo`)
+- 서버 없이 화면만 보려면 위의 "관제센터 여는 법 A"를 따릅니다.
 
 ## 팀 비밀번호와 다른 PC에서 열기
 
