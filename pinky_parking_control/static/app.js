@@ -1,30 +1,56 @@
 /*
-  Pinky 관제실 대시보드.
-  상태는 WebSocket(/api/ws)으로 초당 10번 받고, 명령은 행동 단위 HTTP API 로 보낸다.
-  ?demo 를 붙이면 서버 없이 demo.js 의 모의 로봇으로 돈다 (화면 확인용).
+  Pinky 관제센터 (게임 조종석 방식).
+  - 유닛(로봇)을 숫자키·카드·지도에서 고르고, 명령 막대의 버튼이나 단축키로 행동을 지시한다.
+  - 경기장을 우클릭하면 그 자리로 이동, 주차 칸이면 주차, 주유구역이면 주유 진입.
+  - 직접 운전(M): WASD·방향키·조이스틱, 손을 떼면 선다.
+  상태는 WebSocket(/api/ws)으로 초당 10번 받는다. ?demo 를 붙이면 demo.js 의 모의 로봇으로 돈다.
 */
 (() => {
   'use strict';
 
   const $ = (sel, el = document) => el.querySelector(sel);
-  const ACTION = { goto: '이동', park: '주차', unpark: '출차', lap: '주행' };
-  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중' };
+  const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+  const G = window.ArenaGeo;
+  const ACTION = { goto: '이동', park: '주차', unpark: '출차', lap: '경로 주행', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유' };
+  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중' };
   const RESULT = { running: '진행 중', succeeded: '완료', failed: '실패', canceled: '취소됨' };
-  const TRAIL_POINTS = 150;          // 위치 자취: 10 Hz 로 15초
-  const LOG_ROWS = 6;
+  const STEP_MARK = { running: '▸', done: '✓', skipped: '–', failed: '✕', stopped: '■' };
+  const TRAIL_POINTS = 150;
+  const TELEOP = { linear: 0.15, angular: 1.2 };
 
   const demo = new URLSearchParams(location.search).has('demo') ? window.PinkyDemo : null;
-
   const state = {
-    robots: [], log: [], map: null, layout: { slots: {}, routes: {}, exits: {} },
-    selected: null, pending: null, connected: false, lastRecv: 0, trails: {}, cards: {},
+    layout: null, map: null, robots: [], log: [], scenario: null, selected: null,
+    connected: false, lastRecv: 0, trails: {}, units: {}, startDist: {}, hover: null,
     auth: { required: false, password: '' },
+    drive: { on: false, keys: new Set(), joy: null, lin: 0, ang: 0, sending: false, busy: false },
   };
   const PASSWORD_KEY = 'pinky-control-password';
-  try { state.auth.password = sessionStorage.getItem(PASSWORD_KEY) || ''; } catch (e) { /* 저장소를 못 쓰면 매번 입력 */ }
+  try { state.auth.password = sessionStorage.getItem(PASSWORD_KEY) || ''; } catch (e) { /* 매번 입력 */ }
   const locked = () => state.auth.required && !state.auth.password;
+  const isArena = () => state.layout && state.layout.kind === 'arena';
 
-  // ---- 통신 ----------------------------------------------------------------
+  // ---- 서식 -----------------------------------------------------------------
+  const minus = (s) => s.replace('-', '−');
+  const fixed = (v, d = 2) => (v == null || !isFinite(v) ? '—' : minus(Number(v).toFixed(d)));
+  const deg = (rad) => (rad == null ? '—' : minus(String(Math.round((rad * 180) / Math.PI))));
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const hms = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  const clock = (t) => (t ? hms(new Date(t * 1000)) : '—');
+  const seconds = (s) => (s == null ? '—' : s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}분 ${Math.round(s % 60)}초`);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const busy = (r) => r && r.task && r.task.state === 'running';
+  const robotByName = (name) => state.robots.find((r) => r.name === name);
+  const sel = () => robotByName(state.selected);
+  const sign = (r) => (r && r.callsign) || (r && r.name) || '?';
+  const unitColor = (r) => {
+    const i = state.robots.indexOf(r);
+    const key = sign(r) === 'B' || (sign(r) !== 'A' && i === 1) ? '--unit-b' : '--unit-a';
+    return css(key);
+  };
+
+  // ---- 통신 -----------------------------------------------------------------
   async function api(method, path, body, password = state.auth.password) {
     let data;
     let status = 200;
@@ -37,9 +63,36 @@
       status = res.status;
       data = await res.json().catch(() => ({}));
     }
-    if (status === 401) { setPassword(''); }   // 비밀번호가 바뀌었으면 다시 잠근다
+    if (status === 401) setPassword('');
     if (status >= 400) throw new Error(data.detail || `요청 실패 (${status})`);
     return data;
+  }
+
+  function connect() {
+    if (demo) { state.connected = true; demo.subscribe(onSnapshot); return; }
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`);
+    ws.onopen = () => { state.connected = true; renderFresh(); };
+    ws.onmessage = (event) => onSnapshot(JSON.parse(event.data));
+    ws.onclose = () => { state.connected = false; renderAll(); setTimeout(connect, 2000); };
+  }
+
+  function onSnapshot(snap) {
+    state.robots = snap.robots || [];
+    state.log = snap.log || [];
+    state.scenario = snap.scenario || null;
+    state.lastRecv = Date.now();
+    for (const r of state.robots) {
+      if (!r.pose) continue;
+      const trail = state.trails[r.name] || (state.trails[r.name] = []);
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(last.x - r.pose.x, last.y - r.pose.y) > 0.005) trail.push({ x: r.pose.x, y: r.pose.y });
+      if (trail.length > TRAIL_POINTS) trail.shift();
+      if (busy(r) && r.task.distance_remaining != null && state.startDist[r.task.id] == null) {
+        state.startDist[r.task.id] = Math.max(r.task.distance_remaining, 0.01);
+      }
+    }
+    if (!state.selected && state.robots.length) state.selected = state.robots[0].name;
+    renderAll();
   }
 
   function setPassword(value) {
@@ -48,499 +101,769 @@
     renderAll();
   }
 
-  function renderLock() {
-    $('#unlock').hidden = !locked();
-    $('#lock').hidden = !(state.auth.required && state.auth.password);
+  // ---- 명령 -----------------------------------------------------------------
+  let toastTimer = 0;
+  function toast(text, tone = '') {
+    const el = $('#cmd-toast');
+    el.textContent = text;
+    el.dataset.tone = tone;
+    el.setAttribute('data-show', '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.removeAttribute('data-show'), 2600);
   }
 
-  function connect() {
-    if (demo) { state.connected = true; demo.subscribe(onSnapshot); return; }
-    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${scheme}://${location.host}/api/ws`);
-    ws.onopen = () => { state.connected = true; renderFresh(); };
-    ws.onmessage = (event) => onSnapshot(JSON.parse(event.data));
-    ws.onclose = () => {
-      state.connected = false; renderAll(); setTimeout(connect, 2000);
-    };
-  }
-
-  function onSnapshot(snap) {
-    state.robots = snap.robots || [];
-    state.log = snap.log || [];
-    state.lastRecv = Date.now();
-    for (const r of state.robots) {
-      if (!r.pose) continue;
-      const trail = state.trails[r.name] || (state.trails[r.name] = []);
-      const last = trail[trail.length - 1];
-      if (!last || Math.hypot(last.x - r.pose.x, last.y - r.pose.y) > 0.005) trail.push({ x: r.pose.x, y: r.pose.y });
-      if (trail.length > TRAIL_POINTS) trail.shift();
+  async function order(r, path, body, label, method = 'POST') {
+    if (!r) return;
+    try {
+      await api(method, `/api/robots/${encodeURIComponent(r.name)}/${path}`, body);
+      toast(`${sign(r)} · ${label}`);
+    } catch (error) {
+      toast(`${sign(r)} · ${error.message}`, 'negative');
     }
-    if (!state.selected && state.robots.length) state.selected = state.robots[0].name;
-    renderAll();
   }
 
-  // ---- 서식 ----------------------------------------------------------------
-  const minus = (s) => s.replace('-', '−');
-  const fixed = (v, d = 2) => (v == null || !isFinite(v) ? '—' : minus(Number(v).toFixed(d)));
-  const deg = (rad) => (rad == null ? '—' : minus(String(Math.round(rad * 180 / Math.PI))));
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const hms = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-  const clock = (t) => (t ? hms(new Date(t * 1000)) : '—');
-  const seconds = (s) => (s == null ? '—' : s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}분 ${Math.round(s % 60)}초`);
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const robotColor = (name) => {
-    const i = state.robots.findIndex((r) => r.name === name);
-    return getComputedStyle(document.documentElement).getPropertyValue(`--robot-${(i % 2) + 1}`).trim() || '#fff';
+  function nearestSlot(r) {
+    const slots = Object.entries(state.layout ? state.layout.slots : {});
+    if (!slots.length) return '';
+    if (!r || !r.pose) return slots[0][0];
+    slots.sort((a, b) => Math.hypot(a[1].x - r.pose.x, a[1].y - r.pose.y) - Math.hypot(b[1].x - r.pose.x, b[1].y - r.pose.y));
+    return slots[0][0];
+  }
+
+  const COMMANDS = {
+    drive1: (r) => order(r, 'drive', { track: 1 }, '1번 트랙 1바퀴'),
+    drive2: (r) => order(r, 'drive', { track: 2 }, '2번 트랙 1바퀴'),
+    lane: (r) => {
+      const cur = r && r.pose ? G.nearestTrack(state.layout, r.pose).id : 1;
+      const to = cur === 1 ? 2 : 1;
+      return order(r, 'lane_change', { to }, `${to}번 트랙으로 차선 변경`);
+    },
+    park: (r) => { const slot = $('#slot-pick').value; return order(r, 'park', { slot }, `${slot} 주차`); },
+    unpark: (r) => { const slot = nearestSlot(r); return order(r, 'unpark', { slot }, `${slot}에서 출차`); },
+    fuel_wait: (r) => order(r, 'fuel', { step: 'wait' }, '대기선 30으로'),
+    fuel_enter: (r) => order(r, 'fuel', { step: 'enter' }, '주유구역 20 진입'),
+    fuel_leave: (r) => order(r, 'fuel', { step: 'leave' }, '2번 트랙으로 복귀'),
+    cancel: (r) => order(r, 'cancel', null, '작업 취소'),
+    stop: (r) => order(r, 'stop', null, '정지'),
   };
-  const busy = (r) => r && r.task && r.task.state === 'running';
+  const ARENA_ONLY = new Set(['drive1', 'drive2', 'lane', 'fuel_wait', 'fuel_enter', 'fuel_leave']);
+  const KEYS = { q: 'drive1', e: 'drive2', c: 'lane', p: 'park', u: 'unpark', f: 'fuel_wait', g: 'fuel_enter', h: 'fuel_leave', x: 'cancel' };
 
-  function robotState(r) {
-    if (!state.connected) return { text: '연결 끊김', tone: 'negative' };
-    if (!r.nav2_ready) return { text: 'Nav2 대기', tone: 'warning' };
-    if (busy(r)) return { text: RUNNING[r.task.action], tone: 'active' };
-    if (!r.localized) return { text: '위치 모름', tone: 'warning' };
-    if (r.task && r.task.state === 'failed') return { text: '실패', tone: 'negative' };
-    return { text: '대기', tone: 'neutral' };
+  function why(r, cmd) {
+    if (cmd === 'stop') return state.connected ? '' : '서버와 연결이 끊겼습니다';
+    if (cmd === 'cancel') return busy(r) ? '' : '진행 중인 작업이 없습니다';
+    if (locked()) return '팀 비밀번호를 먼저 넣으세요';
+    if (!state.connected) return '서버와 연결이 끊겼습니다';
+    if (!r) return '유닛을 고르세요';
+    if (ARENA_ONLY.has(cmd) && !isArena()) return '경기장 배치에서만 됩니다';
+    if (state.drive.on) return '직접 운전 중입니다 (M으로 끄기)';
+    if (!r.nav2_ready) return 'Nav2가 아직 켜지지 않았습니다';
+    if (busy(r)) return '작업 중입니다. 먼저 취소하세요 (X)';
+    if ((cmd === 'lane' || cmd === 'drive1' || cmd === 'drive2') && !r.pose) return '로봇 위치를 아직 모릅니다';
+    return '';
   }
 
-  function taskSentence(r) {
-    const t = r.task;
-    if (!t) return '받은 작업이 없습니다';
-    if (t.state === 'running') {
-      const rest = t.action === 'lap'
-        ? `경유점 ${Math.min(t.waypoint_index + 1, t.waypoint_total)}/${t.waypoint_total}`
-        : (t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`);
-      return `<b>${esc(t.target)} ${ACTION[t.action]}</b> · ${rest} · ${seconds(t.elapsed_s)}`;
+  function runCommand(cmd) {
+    const r = sel();
+    const reason = why(r, cmd);
+    const button = $(`.cmd[data-cmd="${cmd}"]`);
+    if (reason) { toast(reason, 'negative'); return; }
+    if (button) { button.setAttribute('data-flash', ''); setTimeout(() => button.removeAttribute('data-flash'), 220); }
+    COMMANDS[cmd](r);
+  }
+
+  // ---- 위 HUD -----------------------------------------------------------------
+  function taskRest(t) {
+    if (t.action === 'drive' || t.action === 'lap' || t.waypoint_total > 1) {
+      return `경유점 ${Math.min(t.waypoint_index + 1, t.waypoint_total)}/${t.waypoint_total}`;
     }
-    const why = t.detail ? ` · ${esc(t.detail)}` : '';
-    return `마지막 작업: ${esc(t.target)} ${ACTION[t.action]} ${RESULT[t.state]}${why}`;
+    return t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`;
   }
 
-  // ---- 제목 줄: 지금 가장 먼저 알아야 할 것 -------------------------------
   function renderFinding() {
     const el = $('#finding');
     if (!state.connected && !demo) { el.textContent = '관제 서버와 연결이 끊겼습니다. 2초마다 다시 연결합니다.'; return; }
+    if (state.scenario && state.scenario.waiting) { el.innerHTML = `<b>시나리오 대기</b> · ${esc(state.scenario.waiting)}`; return; }
     if (!state.robots.length) { el.textContent = '로봇 상태를 받는 중입니다.'; return; }
     const running = state.robots.filter(busy);
     if (running.length) {
-      el.innerHTML = running.map((r) => {
-        const t = r.task;
-        const rest = t.action === 'lap'
-          ? `경유점 ${Math.min(t.waypoint_index + 1, t.waypoint_total)}/${t.waypoint_total}`
-          : (t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`);
-        return `<b>${esc(r.name)}</b> ${esc(t.target)} ${RUNNING[t.action]}, ${rest}`;
-      }).join(' · ');
+      el.innerHTML = running.map((r) => `<b>${esc(sign(r))}</b> ${esc(r.task.target)} ${RUNNING[r.task.action] || ''}, ${taskRest(r.task)}`).join(' · ');
       return;
     }
-    const notReady = state.robots.filter((r) => !r.nav2_ready).map((r) => r.name);
+    const driving = state.robots.filter((r) => r.teleop);
+    if (driving.length) { el.innerHTML = `<b>${esc(sign(driving[0]))}</b> 직접 운전 중`; return; }
+    const notReady = state.robots.filter((r) => !r.nav2_ready).map(sign);
     if (notReady.length) { el.textContent = `${notReady.join(', ')}의 Nav2가 아직 켜지지 않았습니다.`; return; }
     const failed = state.log.find((t) => t.state === 'failed' && Date.now() / 1000 - t.finished < 600);
-    if (failed) {
-      el.innerHTML = `<b>${esc(failed.robot)}</b> ${esc(failed.target)} ${ACTION[failed.action]} 실패: ${esc(failed.detail)} (${clock(failed.finished)})`;
-      return;
-    }
-    el.textContent = `로봇 ${state.robots.length}대 모두 대기 중입니다.`;
+    if (failed) { el.innerHTML = `<b>${esc(failed.robot)}</b> ${esc(failed.target)} ${ACTION[failed.action] || ''} 실패: ${esc(failed.detail)} (${clock(failed.finished)})`; return; }
+    el.textContent = `유닛 ${state.robots.length}대 모두 대기 중입니다. 유닛을 고르고 명령하세요.`;
   }
 
   function renderFresh() {
     const el = $('#fresh');
     const text = $('#fresh-text');
-    if (demo) { el.dataset.state = 'live'; text.textContent = '데모 데이터 · 서버 없이 실행 중'; return; }
-    if (state.connected && state.lastRecv) {
-      el.dataset.state = 'live';
-      text.textContent = `실시간 · ${hms(new Date(state.lastRecv))}`;
-    } else if (state.lastRecv) {
-      el.dataset.state = 'lost';
-      text.textContent = `연결 끊김 · ${hms(new Date(state.lastRecv))} 이후 수신 없음`;
-    } else {
-      el.dataset.state = 'wait';
-      text.textContent = '연결 중';
-    }
+    if (demo) { el.dataset.state = 'live'; text.textContent = '데모 · 모의 로봇'; return; }
+    if (state.connected && state.lastRecv) { el.dataset.state = 'live'; text.textContent = `실시간 · ${hms(new Date(state.lastRecv))}`; } else if (state.lastRecv) { el.dataset.state = 'lost'; text.textContent = `끊김 · ${hms(new Date(state.lastRecv))} 이후`; } else { el.dataset.state = 'wait'; text.textContent = '연결 중'; }
   }
 
-  // ---- 로봇 카드 -----------------------------------------------------------
-  function buildCards() {
-    const host = $('#robots');
+  function renderLock() {
+    $('#unlock').hidden = !locked();
+    $('#lock').hidden = !(state.auth.required && state.auth.password);
+  }
+
+  // ---- 유닛 카드 --------------------------------------------------------------
+  function buildUnits() {
+    const host = $('#units');
     const names = state.robots.map((r) => r.name).join();
     if (host.dataset.names === names) return;
     host.dataset.names = names;
     host.textContent = '';
-    state.cards = {};
-    for (const r of state.robots) {
-      const node = $('#robot-card').content.firstElementChild.cloneNode(true);
+    state.units = {};
+    state.robots.forEach((r, i) => {
+      const node = $('#unit-card').content.firstElementChild.cloneNode(true);
       const q = (k) => node.querySelector(`[data-r="${k}"]`);
-      const id = `r-${r.name}`;
-      q('slot').id = `${id}-slot`; q('slot-label').htmlFor = `${id}-slot`;
-      q('route').id = `${id}-route`; q('route-label').htmlFor = `${id}-route`;
+      q('callsign').textContent = sign(r);
+      q('callsign').style.background = unitColor(r);
       q('name').textContent = r.name;
       q('domain').textContent = `도메인 ${r.domain_id}`;
-      q('swatch').style.background = robotColor(r.name);
-      fillOptions(q('slot'), Object.keys(state.layout.slots));
-      fillOptions(q('route'), Object.keys(state.layout.routes));
-      q('select').addEventListener('click', () => { state.selected = r.name; state.pending = null; renderAll(); });
-      const run = (path, body) => send(r.name, path, body);
-      q('park').addEventListener('click', () => run('park', { slot: q('slot').value }));
-      q('unpark').addEventListener('click', () => run('unpark', { slot: q('slot').value }));
-      q('lap').addEventListener('click', () => run('lap', { route: q('route').value }));
-      q('cancel').addEventListener('click', () => run('cancel'));
-      q('stop').addEventListener('click', () => run('stop'));
+      q('hotkey').textContent = String(i + 1);
+      q('select').addEventListener('click', () => select(r.name));
+      const types = Object.keys((state.layout && state.layout.vehicles) || {});
+      for (const t of types) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = t; b.dataset.type = t;
+        b.title = state.layout.vehicles[t].name || t;
+        b.addEventListener('click', () => { const rr = robotByName(r.name); order(rr, 'vehicle', { type: t }, `차종 ${t}`, 'PUT'); });
+        q('vehicles').appendChild(b);
+      }
       host.appendChild(node);
-      state.cards[r.name] = q;
+      state.units[r.name] = { node, q };
+    });
+  }
+
+  function select(name) {
+    if (state.drive.on && state.selected !== name) stopDriving();
+    state.selected = name;
+    renderAll();
+  }
+
+  function drawSprite(canvas, r) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 240;
+    const h = canvas.clientHeight || 48;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const v = r.vehicle || { length: 0.14, width: 0.13, trailer: 0, type: 'T00' };
+    const scale = 128 / 0.29;            // 가장 긴 T15 가 128 px
+    const right = 140;
+    const color = unitColor(r);
+    // 오른쪽이 앞. 몸체 0.14 m, 뒤에 트레일러
+    const bodyL = 0.14 * scale; const bodyW = 0.13 * scale * 0.55;
+    const cy = h / 2;
+    ctx.fillStyle = color;
+    ctx.fillRect(right - bodyL, cy - bodyW / 2, bodyL, bodyW);
+    ctx.fillStyle = css('--sunk');
+    ctx.fillRect(right - 6, cy - bodyW / 2 + 3, 3, bodyW - 6);
+    if (v.trailer > 0) {
+      const tl = v.trailer * scale;
+      const x0 = right - bodyL - 6 - tl;
+      ctx.strokeStyle = color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(right - bodyL, cy); ctx.lineTo(right - bodyL - 6, cy); ctx.stroke();
+      ctx.globalAlpha = 0.5; ctx.fillRect(x0, cy - bodyW * 0.42, tl, bodyW * 0.84); ctx.globalAlpha = 1;
+      ctx.strokeRect(x0 + 0.5, cy - bodyW * 0.42 + 0.5, tl - 1, bodyW * 0.84 - 1);
     }
+    ctx.fillStyle = css('--soft');
+    ctx.font = `500 12px ${css('--mono')}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`${v.type}`, right + 12, cy - 4);
+    ctx.fillStyle = css('--muted');
+    ctx.font = `400 11px ${css('--font')}`;
+    ctx.fillText(`전체 ${Math.round(v.length * 1000)} mm`, right + 12, cy + 12);
   }
 
-  function fillOptions(select, names) {
-    select.textContent = '';
-    for (const n of names) select.add(new Option(n, n));
-    if (!names.length) select.add(new Option('—', ''));
+  function robotState(r) {
+    if (!state.connected) return { text: '연결 끊김', tone: 'negative' };
+    if (!r.nav2_ready) return { text: 'Nav2 대기', tone: 'warning' };
+    if (busy(r)) return { text: RUNNING[r.task.action] || '작업 중', tone: 'active' };
+    if (r.teleop) return { text: '직접 운전', tone: 'active' };
+    if (!r.localized) return { text: '위치 모름', tone: 'warning' };
+    if (r.task && r.task.state === 'failed') return { text: '실패', tone: 'negative' };
+    return { text: '대기', tone: 'neutral' };
   }
 
-  async function send(name, path, body) {
-    const q = state.cards[name];
-    if (q) q('error').textContent = '';
-    try {
-      await api('POST', `/api/robots/${encodeURIComponent(name)}/${path}`, body);
-    } catch (error) {
-      if (!q) return;
-      q('error').textContent = error.message;
-      clearTimeout(q.errorTimer);
-      q.errorTimer = setTimeout(() => { q('error').textContent = ''; }, 6000);
-    }
-  }
-
-  function renderCards() {
-    buildCards();
+  function renderUnits() {
+    buildUnits();
     for (const r of state.robots) {
-      const q = state.cards[r.name];
-      if (!q) continue;
-      const card = q('name').closest('.robot');
-      card.toggleAttribute('data-loading', !r.pose);
+      const u = state.units[r.name];
+      if (!u) continue;
+      const { q, node } = u;
+      node.toggleAttribute('data-selected', state.selected === r.name);
       q('select').setAttribute('aria-pressed', String(state.selected === r.name));
       const st = robotState(r);
-      q('state').textContent = st.text;
-      q('state').dataset.tone = st.tone;
-      q('task').innerHTML = taskSentence(r);
-      q('x').innerHTML = r.pose ? `${fixed(r.pose.x)}<small>m</small>` : '—';
-      q('y').innerHTML = r.pose ? `${fixed(r.pose.y)}<small>m</small>` : '—';
-      q('yaw').innerHTML = r.pose ? `${deg(r.pose.yaw)}<small>°</small>` : '—';
-      q('speed').innerHTML = `${fixed(r.speed ? r.speed.linear : null)}<small>m/s</small>`;
-      const ready = state.connected && r.nav2_ready;
-      const why = locked() ? '팀 비밀번호를 먼저 넣으세요' : !state.connected ? '서버와 연결이 끊겼습니다'
-        : !r.nav2_ready ? 'Nav2가 아직 켜지지 않았습니다' : busy(r) ? '작업 중입니다. 먼저 취소하세요' : '';
-      for (const k of ['park', 'unpark', 'lap']) {
-        q(k).disabled = !ready || busy(r) || locked();
-        q(k).title = q(k).disabled ? why : '';
+      q('state').textContent = st.text; q('state').dataset.tone = st.tone;
+      const t = r.task;
+      q('task').textContent = busy(r) ? `${t.target} · ${taskRest(t)}` : t ? `마지막: ${t.target} ${ACTION[t.action] || ''} ${RESULT[t.state] || ''}` : '받은 작업 없음';
+      let progress = 0;
+      if (busy(r)) {
+        if (t.waypoint_total > 1) progress = t.waypoint_index / t.waypoint_total;
+        else if (t.distance_remaining != null && state.startDist[t.id]) progress = 1 - t.distance_remaining / state.startDist[t.id];
       }
-      q('slot').disabled = q('route').disabled = !ready || busy(r);
-      q('cancel').disabled = !busy(r);
-      q('stop').disabled = !state.connected;
-      const age = r.pose_age_s;
+      q('progress').style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+      q('x').textContent = r.pose ? fixed(r.pose.x) : '—';
+      q('y').textContent = r.pose ? fixed(r.pose.y) : '—';
+      q('yaw').textContent = r.pose ? `${deg(r.pose.yaw)}°` : '—';
+      q('speed').textContent = r.speed ? fixed(r.speed.linear) : '—';
+      for (const b of $$('button', q('vehicles'))) {
+        b.setAttribute('aria-pressed', String(r.vehicle && r.vehicle.type === b.dataset.type));
+        b.disabled = locked() || !state.connected;
+      }
       q('link').innerHTML = `<span ${r.nav2_ready ? '' : 'data-bad'}>Nav2 <b>${r.nav2_ready ? '켜짐' : '꺼짐'}</b></span>`
-        + `<span ${r.localized ? '' : 'data-bad'}>위치 <b>${age == null ? '받은 적 없음' : `${fixed(age, 1)} s 전`}</b></span>`
-        + `<span>각속도 <b>${fixed(r.speed ? r.speed.angular : null)} rad/s</b></span>`;
+        + `<span ${r.localized ? '' : 'data-bad'}>위치 <b>${r.pose_age_s == null ? '없음' : `${fixed(r.pose_age_s, 1)} s 전`}</b></span>`
+        + `<span>${r.teleop ? '직접 운전' : `도메인 <b>${r.domain_id}</b>`}</span>`;
+      drawSprite(q('sprite'), r);
     }
   }
 
-  // ---- 표 ------------------------------------------------------------------
-  function logRows(items) {
-    if (!items.length) return '<tr class="empty"><td colspan="7">아직 끝난 작업이 없습니다.</td></tr>';
-    return items.map((t) => `<tr>
-      <td class="num dim">${clock(t.finished)}</td>
-      <td><span class="who"><i class="swatch" style="background:${robotColor(t.robot)}"></i>${esc(t.robot)}</span></td>
-      <td>${ACTION[t.action]}</td>
-      <td class="mono">${esc(t.target)}</td>
-      <td><span class="result" data-state="${t.state}">${RESULT[t.state]}</span></td>
-      <td class="detail hide-sm">${esc(t.detail) || '<span class="dim">—</span>'}</td>
-      <td class="num">${seconds(t.elapsed_s)}</td>
-    </tr>`).join('');
-  }
-  const LOG_HEAD = `<thead><tr><th class="num">끝난 시각</th><th>로봇</th><th>행동</th><th>대상</th><th>결과</th>
-    <th class="hide-sm">사유</th><th class="num">걸린 시간</th></tr></thead>`;
-
-  function renderLog() {
-    $('#log-table').innerHTML = LOG_HEAD + `<tbody>${logRows(state.log.slice(0, LOG_ROWS))}</tbody>`;
-    $('#log-count').textContent = `${state.log.length}건 · 전체 보기`;
-    if (!$('#view-log').hidden) {
-      $('#log-full').innerHTML = LOG_HEAD + `<tbody>${logRows(state.log)}</tbody>`;
-      const ok = state.log.filter((t) => t.state === 'succeeded').length;
-      const bad = state.log.filter((t) => t.state === 'failed').length;
-      $('#log-summary').textContent = state.log.length
-        ? `최근 ${state.log.length}건 중 완료 ${ok}건, 실패 ${bad}건, 취소 ${state.log.length - ok - bad}건`
-        : '아직 끝난 작업이 없습니다.';
+  // ---- 명령 막대 --------------------------------------------------------------
+  function renderCommand() {
+    const r = sel();
+    $('#cmd-badge').textContent = sign(r);
+    $('#cmd-badge').style.background = r ? unitColor(r) : css('--raised');
+    $('#cmd-name').textContent = r ? `${r.name} · ${r.vehicle ? r.vehicle.type : ''}` : '유닛을 고르세요';
+    $('#cmd-state').textContent = r ? robotState(r).text + (busy(r) ? ` · ${r.task.target}` : '') : '숫자키 1, 2';
+    for (const b of $$('.cmd')) {
+      if (b.dataset.pending) {
+        b.disabled = true;
+        b.title = (state.layout && state.layout.pending && state.layout.pending[b.dataset.pending]) || '준비 중';
+        continue;
+      }
+      const reason = why(r, b.dataset.cmd);
+      b.disabled = Boolean(reason);
+      b.title = reason;
     }
-  }
-
-  function slotOccupant(name, slot) {
-    for (const r of state.robots) {
-      if (busy(r) && r.task.action === 'park' && r.task.target === name) return `${r.name} 들어오는 중`;
-      if (r.pose && Math.hypot(r.pose.x - slot.x, r.pose.y - slot.y) < 0.25 && !busy(r)) return `${r.name} 주차됨`;
+    const slotPick = $('#slot-pick');
+    const slots = Object.keys((state.layout && state.layout.slots) || {});
+    if (slotPick.dataset.names !== slots.join()) {
+      slotPick.dataset.names = slots.join();
+      slotPick.textContent = '';
+      for (const s of slots) slotPick.add(new Option(s, s));
     }
-    return null;
+    const canDrive = r && state.connected && !locked() && !busy(r);
+    const toggle = $('#drive-toggle');
+    toggle.setAttribute('aria-pressed', String(state.drive.on));
+    toggle.disabled = !state.drive.on && !canDrive;
+    toggle.title = toggle.disabled ? why(r, 'drive1') || '지금은 직접 운전할 수 없습니다' : '';
+    $('#joystick').toggleAttribute('data-off', !state.drive.on);
+    $('#g-lin').textContent = fixed(state.drive.lin);
+    $('#g-ang').textContent = fixed(state.drive.ang);
+    const bar = (el, v, max) => { const f = Math.max(-1, Math.min(1, v / max)); el.style.left = f >= 0 ? '50%' : `${50 + f * 50}%`; el.style.width = `${Math.abs(f) * 50}%`; };
+    bar($('#g-lin-bar'), state.drive.lin, TELEOP.linear);
+    bar($('#g-ang-bar'), state.drive.ang, TELEOP.angular);
   }
 
-  function renderLayout() {
-    const slots = Object.entries(state.layout.slots);
-    $('#slots-table').innerHTML = `<thead><tr><th>칸</th><th class="num">x</th><th class="num">y</th><th class="num">방향</th><th>상태</th></tr></thead><tbody>${
-      slots.length ? slots.map(([n, s]) => {
-        const who = slotOccupant(n, s);
-        return `<tr><td class="mono">${esc(n)}</td><td class="num">${fixed(s.x)}</td><td class="num">${fixed(s.y)}</td>
-          <td class="num">${deg(s.yaw)}°</td><td class="${who ? '' : 'dim'}">${who || '비어 있음'}</td></tr>`;
-      }).join('') : '<tr class="empty"><td colspan="5">주차 칸이 없습니다 (slots.yaml).</td></tr>'
+  // ---- 직접 운전 --------------------------------------------------------------
+  function toggleDriving() {
+    if (state.drive.on) { stopDriving(); return; }
+    const r = sel();
+    if (!r || !state.connected || locked() || busy(r)) { toast(why(r, 'drive1') || '지금은 직접 운전할 수 없습니다', 'negative'); return; }
+    state.drive.on = true;
+    toast(`${sign(r)} · 직접 운전 시작 (WASD, 손 떼면 정지)`);
+    renderAll();
+  }
+
+  function stopDriving() {
+    const r = sel();
+    state.drive.on = false; state.drive.keys.clear(); state.drive.joy = null;
+    state.drive.lin = 0; state.drive.ang = 0;
+    resetStick();
+    if (r && state.drive.sending) api('POST', `/api/robots/${encodeURIComponent(r.name)}/teleop`, { linear: 0, angular: 0 }).catch(() => {});
+    state.drive.sending = false;
+    renderAll();
+  }
+
+  function driveTick() {
+    const d = state.drive;
+    if (!d.on) return;
+    const r = sel();
+    let lin = 0; let ang = 0;
+    const k = d.keys;
+    if (k.has('w') || k.has('arrowup')) lin += TELEOP.linear;
+    if (k.has('s') || k.has('arrowdown')) lin -= TELEOP.linear;
+    if (k.has('a') || k.has('arrowleft')) ang += TELEOP.angular;
+    if (k.has('d') || k.has('arrowright')) ang -= TELEOP.angular;
+    if (d.joy) { lin = -d.joy.y * TELEOP.linear; ang = -d.joy.x * TELEOP.angular; }
+    d.lin = lin; d.ang = ang;
+    renderCommand();
+    if (!r || d.busy) return;
+    const moving = lin !== 0 || ang !== 0;
+    if (!moving && !d.sending) return;
+    d.busy = true;
+    api('POST', `/api/robots/${encodeURIComponent(r.name)}/teleop`, { linear: lin, angular: ang })
+      .then(() => { d.sending = moving; })
+      .catch((error) => { toast(error.message, 'negative'); stopDriving(); })
+      .finally(() => { d.busy = false; });
+  }
+
+  const pad = $('#joystick');
+  const stick = $('#stick');
+  function resetStick() { stick.style.transform = ''; }
+  pad.addEventListener('pointerdown', (event) => {
+    if (!state.drive.on) { toast('먼저 직접 운전을 켜세요 (M)', 'negative'); return; }
+    pad.setPointerCapture(event.pointerId);
+    moveStick(event);
+  });
+  function moveStick(event) {
+    if (!state.drive.on || !pad.hasPointerCapture(event.pointerId)) return;
+    const rect = pad.getBoundingClientRect();
+    const rad = rect.width / 2;
+    let x = (event.clientX - rect.left - rad) / rad;
+    let y = (event.clientY - rect.top - rad) / rad;
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    state.drive.joy = { x: Math.abs(x) < 0.12 ? 0 : x, y: Math.abs(y) < 0.12 ? 0 : y };
+    stick.style.transform = `translate(${x * (rad - 13)}px, ${y * (rad - 13)}px)`;
+  }
+  pad.addEventListener('pointermove', moveStick);
+  const releaseStick = () => { state.drive.joy = null; resetStick(); };
+  pad.addEventListener('pointerup', releaseStick);
+  pad.addEventListener('pointercancel', releaseStick);
+
+  // ---- 미션 (시연 시나리오) ----------------------------------------------------
+  function renderMission() {
+    const sc = state.scenario;
+    const list = $('#steps');
+    const buttons = ['#sc-next', '#sc-run', '#sc-stop', '#sc-reset'].map((s) => $(s));
+    if (!sc) {
+      list.innerHTML = `<li class="step"><span class="step-mark">–</span><span class="step-title">${isArena() ? '시나리오를 불러오는 중입니다' : '시연 시나리오는 경기장 배치에서만 실행합니다'}</span><span class="step-sub">지금 배치: ${esc(state.layout ? state.layout.name : '—')}</span></li>`;
+      buttons.forEach((b) => { b.disabled = true; });
+      $('#mission-progress').textContent = '—';
+      $('#confirm').hidden = true;
+      return;
+    }
+    const finished = sc.steps.filter((s) => s.state === 'done' || s.state === 'skipped').length;
+    $('#mission-progress').textContent = `${finished} / ${sc.steps.length}`;
+    const key = JSON.stringify([sc.steps.map((s) => [s.state, s.note]), sc.current]);
+    if (list.dataset.key !== key) {
+      list.dataset.key = key;
+      list.innerHTML = sc.steps.map((s, i) => `<li class="step" data-state="${s.state}">
+        <span class="step-mark">${STEP_MARK[s.state] || i + 1}</span>
+        <span class="step-title">${esc(s.title)}</span>
+        <span class="step-sub">${s.pending ? `<span class="tag">준비 중 · ${esc(s.pending)}</span>` : esc(s.note || s.detail)}</span>
+        ${s.state === 'running' && s.actions.length ? `<ul class="step-actions">${s.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+      </li>`).join('');
+    }
+    $('#confirm').hidden = !sc.waiting;
+    $('#confirm-text').textContent = sc.waiting || '';
+    const blocked = locked() || !state.connected;
+    $('#sc-next').disabled = sc.running || blocked || finished === sc.steps.length;
+    $('#sc-run').disabled = sc.running || blocked || finished === sc.steps.length;
+    $('#sc-stop').disabled = !sc.running;
+    $('#sc-reset').disabled = sc.running || blocked;
+    $('#confirm-btn').disabled = blocked;
+  }
+
+  async function scenario(path, body) {
+    $('#mission-error').textContent = '';
+    try { await api('POST', `/api/scenario/${path}`, body || {}); } catch (error) { $('#mission-error').textContent = error.message; }
+  }
+
+  // ---- 작업 기록 화면 ---------------------------------------------------------
+  function renderLogView() {
+    if ($('#view-log').hidden) return;
+    const rows = state.log;
+    $('#log-full').innerHTML = `<thead><tr><th class="num">끝난 시각</th><th>유닛</th><th>행동</th><th>대상</th><th>결과</th><th>사유</th><th class="num">걸린 시간</th></tr></thead><tbody>${
+      rows.length ? rows.map((t) => {
+        const r = robotByName(t.robot);
+        return `<tr><td class="num dim">${clock(t.finished)}</td>
+          <td><span class="who"><i style="background:${r ? unitColor(r) : css('--soft')}">${esc(sign(r) || '?')}</i>${esc(t.robot)}</span></td>
+          <td>${ACTION[t.action] || t.action}</td><td>${esc(t.target)}</td>
+          <td><span class="result" data-state="${t.state}">${RESULT[t.state] || t.state}</span></td>
+          <td class="dim">${esc(t.detail) || '—'}</td><td class="num">${seconds(t.elapsed_s)}</td></tr>`;
+      }).join('') : '<tr class="empty"><td colspan="7">아직 끝난 작업이 없습니다.</td></tr>'
     }</tbody>`;
-    // 경로는 경유점마다 한 줄: 주행 중인 로봇이 다음에 갈 점을 표시한다
-    const routes = Object.entries(state.layout.routes);
-    $('#routes-table').innerHTML = `<thead><tr><th>경로</th><th class="num">경유점</th><th class="num">x</th><th class="num">y</th><th>상태</th></tr></thead><tbody>${
-      routes.length ? routes.map(([n, pts]) => pts.map((p, i) => {
-        const who = state.robots.filter((r) => busy(r) && r.task.action === 'lap' && r.task.target === n && r.task.waypoint_index === i)
-          .map((r) => `${r.name} 다음 목표`);
-        return `<tr><td class="mono ${i ? 'dim' : ''}">${i ? '' : esc(n)}</td><td class="num">${i + 1}</td>
-          <td class="num">${fixed(p.x)}</td><td class="num">${fixed(p.y)}</td>
-          <td class="${who.length ? '' : 'dim'}">${who.length ? who.join(', ') : '—'}</td></tr>`;
-      }).join('')).join('') : '<tr class="empty"><td colspan="5">경로가 없습니다 (route.yaml).</td></tr>'
-    }</tbody>`;
+    const ok = rows.filter((t) => t.state === 'succeeded').length;
+    const bad = rows.filter((t) => t.state === 'failed').length;
+    $('#log-summary').textContent = rows.length ? `최근 ${rows.length}건 중 완료 ${ok}, 실패 ${bad}, 취소 ${rows.length - ok - bad}` : '아직 끝난 작업이 없습니다.';
   }
 
-  function renderLegend() {
-    $('#legend').innerHTML = state.robots.map((r) => `<li><i style="background:${robotColor(r.name)}"></i>${esc(r.name)}</li>`).join('')
-      + '<li><i class="slot-mark"></i>주차 칸</li>'
-      + '<li><i class="floor-mark"></i>바닥</li><li><i class="wall-mark"></i>벽</li>';
-  }
-
-  // ---- 배치도 --------------------------------------------------------------
-  const canvas = $('#map');
+  // ---- 경기장 그리기 -----------------------------------------------------------
+  const canvas = $('#field');
   const ctx = canvas.getContext('2d');
   let view = null;
-  let cellLayer = null;
 
-  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-
-  function layoutMap() {
+  function bounds() {
+    if (isArena()) { const b = state.layout.board; return { x0: -b.width / 2, y0: -b.height / 2, w: b.width, h: b.height }; }
     const m = state.map;
+    if (m) return { x0: m.origin.x, y0: m.origin.y, w: m.width * m.resolution, h: m.height * m.resolution };
+    return { x0: -2, y0: -2, w: 4, h: 4 };
+  }
+
+  function layoutField() {
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(rect.width * dpr);
     canvas.height = Math.round(rect.height * dpr);
-    if (!m || !rect.width) { view = null; return; }
-    const W = m.width * m.resolution;
-    const H = m.height * m.resolution;
-    const pad = { l: 40, r: 8, t: 6, b: 26 };
-    const s = Math.min((rect.width - pad.l - pad.r) / W, (rect.height - pad.t - pad.b) / H);
-    view = {
-      dpr, s, W, H, w: rect.width, h: rect.height, x0: m.origin.x, y0: m.origin.y,
-      ox: pad.l + (rect.width - pad.l - pad.r - W * s) / 2,
-      oy: pad.t + (rect.height - pad.t - pad.b - H * s) / 2,
-    };
-    // 칸은 크기가 바뀔 때만 다시 그린다
-    cellLayer = document.createElement('canvas');
-    cellLayer.width = canvas.width; cellLayer.height = canvas.height;
-    const c = cellLayer.getContext('2d');
-    c.scale(dpr, dpr);
-    const colors = { f: css('--map-free'), o: css('--map-wall') };
-    const cs = m.resolution * s;
-    for (let row = 0; row < m.height; row += 1) {
-      for (let col = 0; col < m.width; col += 1) {
-        const kind = m.cells[row * m.width + col];
-        if (kind === 'u') continue;
-        c.fillStyle = colors[kind];
-        c.fillRect(view.ox + col * cs, view.oy + row * cs, Math.ceil(cs), Math.ceil(cs));
+    if (!state.layout || !rect.width) { view = null; return; }
+    const b = bounds();
+    const p = { l: 34, r: 6, t: 4, b: 38 };
+    const s = Math.min((rect.width - p.l - p.r) / b.w, (rect.height - p.t - p.b) / b.h);
+    view = { dpr, s, ...b, ox: p.l + (rect.width - p.l - p.r - b.w * s) / 2, oy: p.t + (rect.height - p.t - p.b - b.h * s) / 2 };
+  }
+  const toPx = (x, y) => [view.ox + (x - view.x0) * view.s, view.oy + (view.h - (y - view.y0)) * view.s];
+  const toWorld = (px, py) => ({ x: view.x0 + (px - view.ox) / view.s, y: view.y0 + view.h - (py - view.oy) / view.s });
+
+  function stadiumPath(radius) {
+    const st = new G.Stadium(radius, state.layout.straight);
+    ctx.beginPath();
+    for (let i = 0; i <= 160; i += 1) {
+      const [x, y] = st.point((st.length * i) / 160);
+      const [px, py] = toPx(x, y);
+      if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  function zoneRect(z, length, width, fill, stroke) {
+    const [px, py] = toPx(z.x, z.y);
+    ctx.save();
+    ctx.translate(px, py); ctx.rotate(-(z.yaw ?? Math.PI / 2));
+    const L = length * view.s; const W = width * view.s;
+    ctx.fillStyle = fill; ctx.globalAlpha = 0.16; ctx.fillRect(-L / 2, -W / 2, L, W);
+    ctx.globalAlpha = 1; ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.strokeRect(-L / 2, -W / 2, L, W);
+    ctx.restore();
+  }
+
+  function markerTag(x, y, text) {
+    const [px, py] = toPx(x, y);
+    ctx.font = `600 11px ${css('--mono')}`;
+    const w = ctx.measureText(text).width + 8;
+    ctx.fillStyle = css('--text'); ctx.fillRect(px - w / 2, py - 8, w, 16);
+    ctx.fillStyle = '#0c0c0e'; ctx.textAlign = 'center'; ctx.fillText(text, px, py + 4);
+  }
+
+  function drawArena() {
+    const L = state.layout;
+    const b = bounds();
+    const [bx, by] = toPx(b.x0, b.y0 + b.h);
+    ctx.fillStyle = css('--board'); ctx.fillRect(bx, by, b.w * view.s, b.h * view.s);
+    // 0.5 m 격자와 눈금
+    ctx.strokeStyle = css('--rule'); ctx.lineWidth = 1;
+    ctx.fillStyle = css('--muted'); ctx.font = `11px ${css('--mono')}`;
+    for (let v = -1; v <= 1.001; v += 0.5) {
+      const [px] = toPx(v, 0); const [, py] = toPx(0, v);
+      ctx.beginPath(); ctx.moveTo(Math.round(px) + 0.5, by); ctx.lineTo(Math.round(px) + 0.5, by + b.h * view.s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, Math.round(py) + 0.5); ctx.lineTo(bx + b.w * view.s, Math.round(py) + 0.5); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillText(minus(v.toFixed(1)), px, by + b.h * view.s + 15);
+      ctx.textAlign = 'right'; ctx.fillText(minus(v.toFixed(1)), bx - 6, py + 4);
+    }
+    // 트랙: 바깥 R + 차선 폭 반 ~ 안쪽 R - 차선 폭 반 을 아스팔트로
+    const radii = L.tracks.map((t) => t.radius);
+    const half = L.lane_width / 2;
+    const outer = Math.max(...radii) + half; const inner = Math.min(...radii) - half;
+    stadiumPath(outer); ctx.fillStyle = css('--asphalt'); ctx.fill();
+    stadiumPath(inner); ctx.fillStyle = css('--board'); ctx.fill();
+    // 테이프 선
+    ctx.strokeStyle = css('--tape'); ctx.lineWidth = Math.max(1.5, L.tape_width * view.s);
+    const lines = new Set([inner, outer, ...radii.slice(0, -1).map((r) => r + half)]);
+    for (const r of lines) { stadiumPath(r); ctx.stroke(); }
+    // 차선 중심선과 방향 화살표 (반시계)
+    for (const t of L.tracks) {
+      ctx.setLineDash([4, 6]); ctx.strokeStyle = css('--control'); ctx.lineWidth = 1;
+      stadiumPath(t.radius); ctx.stroke(); ctx.setLineDash([]);
+      const st = new G.Stadium(t.radius, L.straight);
+      ctx.fillStyle = css('--muted');
+      for (const f of [0.08, 0.58]) {
+        const [x, y, yaw] = st.point(st.length * f);
+        const [px, py] = toPx(x, y);
+        ctx.save(); ctx.translate(px, py); ctx.rotate(-yaw);
+        ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-4, -5); ctx.lineTo(-4, 5); ctx.closePath(); ctx.fill();
+        ctx.restore();
       }
+      const [lx, ly] = toPx(-t.radius, 0);
+      ctx.save(); ctx.translate(lx, ly); ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = css('--soft'); ctx.font = `500 11px ${css('--font')}`; ctx.textAlign = 'center';
+      ctx.fillText(`${t.id}번 · ${(t.vehicles || []).join('/')}`, 0, 4);
+      ctx.restore();
+    }
+    // 주차 칸
+    for (const [name, s] of Object.entries(L.slots)) {
+      zoneRect(s, s.length, s.width, css('--zone-park'), css('--zone-park'));
+      const fx = s.x + Math.cos(s.yaw) * (s.length / 2); const fy = s.y + Math.sin(s.yaw) * (s.length / 2);
+      markerTag(fx, fy, String(s.marker ?? name));
+    }
+    // 주유구역과 대기선
+    const f = L.fuel;
+    if (f) {
+      zoneRect({ ...f.zone, yaw: Math.PI / 2 }, f.zone.length, f.zone.width, css('--zone-fuel'), css('--zone-fuel'));
+      const [zx, zy] = toPx(f.zone.x, f.zone.y);
+      ctx.fillStyle = css('--zone-fuel'); ctx.font = `600 12px ${css('--font')}`; ctx.textAlign = 'center';
+      ctx.fillText('주유', zx, zy + 4);
+      markerTag(f.zone.x, f.zone.y - f.zone.length / 2, String(f.zone.marker));
+      const w = f.wait_line;
+      const [ax, ay] = toPx(w.x - w.width / 2, w.y); const [cx] = toPx(w.x + w.width / 2, w.y);
+      ctx.fillStyle = css('--zone-wait'); ctx.fillRect(ax, ay - 3, cx - ax, 6);
+      markerTag(w.x, w.y + 0.07, String(w.marker));
     }
   }
 
-  const toPx = (x, y) => [view.ox + (x - view.x0) * view.s, view.oy + (view.H - (y - view.y0)) * view.s];
-  const toWorld = (px, py) => ({ x: view.x0 + (px - view.ox) / view.s, y: view.y0 + view.H - (py - view.oy) / view.s });
-
-  function drawMap() {
-    if (!view) return;
-    const { dpr } = view;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(cellLayer, 0, 0);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const mono = `11px ${css('--mono')}`;
-    const sans = `12px ${css('--font')}`;
-
-    // 0.5 m 격자와 1 m 눈금
-    const [left, top] = toPx(view.x0, view.y0 + view.H);
-    const [right, bottom] = toPx(view.x0 + view.W, view.y0);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = css('--border');
-    ctx.fillStyle = css('--muted');
-    ctx.font = mono;
-    for (let x = Math.ceil(view.x0 * 2) / 2; x <= view.x0 + view.W; x += 0.5) {
-      const [px] = toPx(x, 0);
-      ctx.beginPath(); ctx.moveTo(Math.round(px) + 0.5, top); ctx.lineTo(Math.round(px) + 0.5, bottom); ctx.stroke();
-      if (Number.isInteger(x)) { ctx.textAlign = 'center'; ctx.fillText(`${minus(String(x))} m`, px, bottom + 17); }
+  function drawFactory() {
+    const m = state.map;
+    if (m) {
+      const cs = m.resolution * view.s;
+      const colors = { f: css('--map-free'), o: css('--map-wall') };
+      for (let row = 0; row < m.height; row += 1) {
+        for (let col = 0; col < m.width; col += 1) {
+          const k = m.cells[row * m.width + col];
+          if (k === 'u') continue;
+          ctx.fillStyle = colors[k];
+          ctx.fillRect(view.ox + col * cs, view.oy + row * cs, Math.ceil(cs), Math.ceil(cs));
+        }
+      }
     }
-    for (let y = Math.ceil(view.y0 * 2) / 2; y <= view.y0 + view.H; y += 0.5) {
-      const [, py] = toPx(0, y);
-      ctx.beginPath(); ctx.moveTo(left, Math.round(py) + 0.5); ctx.lineTo(right, Math.round(py) + 0.5); ctx.stroke();
-      if (Number.isInteger(y)) { ctx.textAlign = 'right'; ctx.fillText(minus(String(y)), left - 8, py + 4); }
-    }
-
-    // 경로: 옅은 점선과 경유점
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = css('--control');
-    for (const pts of Object.values(state.layout.routes)) {
+    ctx.setLineDash([4, 5]); ctx.strokeStyle = css('--control');
+    for (const pts of Object.values(state.layout.routes || {})) {
       ctx.beginPath();
       pts.forEach((p, i) => { const [px, py] = toPx(p.x, p.y); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
       ctx.stroke();
     }
     ctx.setLineDash([]);
-    ctx.fillStyle = css('--control');
-    for (const pts of Object.values(state.layout.routes)) {
-      for (const p of pts) { const [px, py] = toPx(p.x, p.y); ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill(); }
+    for (const [name, s] of Object.entries(state.layout.slots)) {
+      zoneRect({ ...s, yaw: s.yaw }, 0.24, 0.2, css('--zone-park'), css('--zone-park'));
+      const [px, py] = toPx(s.x, s.y);
+      ctx.fillStyle = css('--zone-park'); ctx.font = `500 11px ${css('--mono')}`; ctx.textAlign = 'center';
+      ctx.fillText(name, px, py - 0.1 * view.s - 6);
     }
+  }
 
-    // 주차 칸: 로봇 크기의 테두리 (0.24 x 0.20 m)
-    for (const [name, slot] of Object.entries(state.layout.slots)) {
-      const [px, py] = toPx(slot.x, slot.y);
-      const target = state.robots.some((r) => busy(r) && r.task.action === 'park' && r.task.target === name);
-      ctx.save();
-      ctx.translate(px, py); ctx.rotate(-slot.yaw);
-      ctx.strokeStyle = target ? css('--text') : css('--muted');
-      ctx.strokeRect(-0.12 * view.s, -0.10 * view.s, 0.24 * view.s, 0.20 * view.s);
-      ctx.restore();
-      ctx.fillStyle = target ? css('--text') : css('--muted');
-      ctx.font = mono; ctx.textAlign = 'center';
-      ctx.fillText(name, px, py - 0.10 * view.s - 6);
+  function drawVehicle(r) {
+    const v = r.vehicle || { length: 0.14, width: 0.13, trailer: 0 };
+    const [px, py] = toPx(r.pose.x, r.pose.y);
+    const s = view.s; const color = unitColor(r);
+    ctx.save(); ctx.translate(px, py); ctx.rotate(-r.pose.yaw);
+    const bl = 0.14 * s; const bw = (v.width || 0.13) * s;
+    if (v.trailer > 0) {
+      const tl = v.trailer * s; const gap = 0.012 * s;
+      ctx.strokeStyle = color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-bl / 2, 0); ctx.lineTo(-bl / 2 - gap, 0); ctx.stroke();
+      ctx.fillStyle = color; ctx.globalAlpha = 0.45; ctx.fillRect(-bl / 2 - gap - tl, -bw * 0.42, tl, bw * 0.84); ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.5; ctx.strokeRect(-bl / 2 - gap - tl, -bw * 0.42, tl, bw * 0.84);
     }
+    ctx.fillStyle = color; ctx.fillRect(-bl / 2, -bw / 2, bl, bw);
+    ctx.fillStyle = css('--board'); ctx.fillRect(bl / 2 - 0.018 * s, -bw / 2 + 0.02 * s, 0.01 * s, bw - 0.04 * s);
+    if (r.name === state.selected) {
+      const ext = bl / 2 + 6; const back = -bl / 2 - (v.trailer > 0 ? v.trailer * s + 0.012 * s : 0) - 6; const half = bw / 2 + 6;
+      const c = 8;
+      ctx.strokeStyle = css('--select'); ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      [[ext, half, -1, -1], [ext, -half, -1, 1], [back, half, 1, -1], [back, -half, 1, 1]].forEach(([x, y, dx, dy]) => {
+        ctx.moveTo(x + dx * c, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * c);
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
+    // 호출 부호
+    ctx.font = `700 12px ${css('--mono')}`; ctx.textAlign = 'center';
+    const tag = sign(r);
+    const reach = (0.07 + (v.trailer > 0 ? v.trailer + 0.012 : 0)) * s;   // 로봇이 차지하는 반경
+    const tx = px + Math.max(bw / 2, reach * Math.abs(Math.sin(r.pose.yaw)), bl / 2) + 14;
+    ctx.fillStyle = color; ctx.fillRect(tx - 9, py - 9, 18, 17);
+    ctx.fillStyle = '#0c0c0e'; ctx.fillText(tag, tx, py + 4);
+  }
 
-    // 자취, 목표, 로봇
+  function drawField() {
+    if (!view || $('#view-board').hidden) return;
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (isArena()) drawArena(); else drawFactory();
+    // 자취와 남은 경로
     for (const r of state.robots) {
-      const color = robotColor(r.name);
+      const color = unitColor(r);
       const trail = state.trails[r.name] || [];
       if (trail.length > 1) {
-        ctx.globalAlpha = 0.35; ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        trail.forEach((p, i) => { const [px, py] = toPx(p.x, p.y); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
-        ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.3; ctx.strokeStyle = color; ctx.lineWidth = 2;
+        ctx.beginPath(); trail.forEach((p, i) => { const [x, y] = toPx(p.x, p.y); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
+        ctx.globalAlpha = 1;
       }
       if (busy(r) && r.pose) {
-        const g = r.task.goal;
+        const rest = r.task.poses.slice(r.task.waypoint_index);
+        ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        let [x0, y0] = toPx(r.pose.x, r.pose.y); ctx.moveTo(x0, y0);
+        for (const p of rest) { [x0, y0] = toPx(p.x, p.y); ctx.lineTo(x0, y0); }
+        ctx.stroke(); ctx.setLineDash([]);
+        const g = rest[rest.length - 1] || r.task.goal;
         const [gx, gy] = toPx(g.x, g.y);
-        const [rx, ry] = toPx(r.pose.x, r.pose.y);
-        ctx.strokeStyle = color; ctx.setLineDash([3, 4]);
-        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(gx, gy); ctx.stroke(); ctx.setLineDash([]);
-        ctx.beginPath(); ctx.arc(gx, gy, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(gx, gy, 7, 0, Math.PI * 2); ctx.stroke();
       }
     }
-    for (const r of state.robots) {
-      if (!r.pose) continue;
-      const [px, py] = toPx(r.pose.x, r.pose.y);
-      const rad = Math.max(7, 0.07 * view.s);
-      ctx.fillStyle = robotColor(r.name);
-      ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.fill();
-      // 앞쪽 표시
-      ctx.strokeStyle = css('--surface'); ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(px, py);
-      ctx.lineTo(px + Math.cos(r.pose.yaw) * rad, py - Math.sin(r.pose.yaw) * rad); ctx.stroke(); ctx.lineWidth = 1;
-      if (r.name === state.selected) {
-        ctx.strokeStyle = css('--accent');
-        ctx.beginPath(); ctx.arc(px, py, rad + 4, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.fillStyle = css('--text'); ctx.font = sans; ctx.textAlign = 'left';
-      ctx.fillText(r.name, px + rad + 8, py + 4);
-    }
-
-    // 지도를 눌러 정한 이동 목표
-    if (state.pending) {
-      const [px, py] = toPx(state.pending.x, state.pending.y);
-      ctx.strokeStyle = css('--accent');
-      const sel = state.robots.find((r) => r.name === state.selected);
-      if (sel && sel.pose) {
-        const [rx, ry] = toPx(sel.pose.x, sel.pose.y);
-        ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(px, py); ctx.stroke(); ctx.setLineDash([]);
-      }
-      ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px - 3, py); ctx.lineTo(px + 3, py); ctx.moveTo(px, py - 3); ctx.lineTo(px, py + 3); ctx.stroke();
+    for (const r of state.robots) if (r.pose) drawVehicle(r);
+    // 우클릭 미리보기
+    if (state.hover && state.hover.label) {
+      const [hx, hy] = toPx(state.hover.x, state.hover.y);
+      ctx.strokeStyle = css('--select'); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = `500 12px ${css('--font')}`;
+      const text = `우클릭: ${state.hover.label}`;
+      const w = ctx.measureText(text).width + 14;
+      const left = Math.min(hx + 12, view.ox + view.w * view.s - w);
+      ctx.fillStyle = css('--raised'); ctx.fillRect(left, hy - 26, w, 20);
+      ctx.fillStyle = css('--text'); ctx.textAlign = 'left'; ctx.fillText(text, left + 7, hy - 12);
     }
   }
 
-  canvas.addEventListener('click', (event) => {
-    if (!view || !state.selected) return;
+  // 우클릭으로 할 일: 칸이면 주차, 주유구역이면 진입, 대기선이면 대기, 아니면 이동
+  function contextAt(p) {
+    const L = state.layout;
+    const inRect = (z, length, width) => {
+      const yaw = z.yaw ?? Math.PI / 2;
+      const dx = p.x - z.x; const dy = p.y - z.y;
+      const along = dx * Math.cos(yaw) + dy * Math.sin(yaw);
+      const across = -dx * Math.sin(yaw) + dy * Math.cos(yaw);
+      return Math.abs(along) <= length / 2 && Math.abs(across) <= width / 2;
+    };
+    for (const [name, s] of Object.entries(L.slots || {})) {
+      if (inRect(s, s.length || 0.24, s.width || 0.2)) return { cmd: 'park', slot: name, label: `${name} 주차`, x: s.x, y: s.y };
+    }
+    if (isArena() && L.fuel) {
+      const z = L.fuel.zone; const w = L.fuel.wait_line;
+      if (inRect({ ...z, yaw: Math.PI / 2 }, z.length, z.width)) return { cmd: 'fuel_enter', label: '주유구역 20 진입', x: z.x, y: z.y };
+      if (Math.abs(p.x - w.x) <= w.width / 2 && Math.abs(p.y - w.y) < 0.08) return { cmd: 'fuel_wait', label: '대기선 30에서 대기', x: w.x, y: w.y };
+    }
+    return { cmd: 'goto', label: `이동 (${fixed(p.x)}, ${fixed(p.y)})`, x: p.x, y: p.y };
+  }
+
+  function pointerWorld(event) {
     const rect = canvas.getBoundingClientRect();
     const p = toWorld(event.clientX - rect.left, event.clientY - rect.top);
-    if (p.x < view.x0 || p.y < view.y0 || p.x > view.x0 + view.W || p.y > view.y0 + view.H) return;
-    const sel = state.robots.find((r) => r.name === state.selected);
-    const yaw = sel && sel.pose ? Math.atan2(p.y - sel.pose.y, p.x - sel.pose.x) : 0;
-    state.pending = { x: +p.x.toFixed(2), y: +p.y.toFixed(2), yaw: +yaw.toFixed(3) };
-    renderAll();
-  });
-
-  function renderMapBar() {
-    const bar = $('#map-bar');
-    const sel = state.robots.find((r) => r.name === state.selected);
-    const key = JSON.stringify([state.selected, state.pending, sel && busy(sel), state.connected, sel && sel.nav2_ready, locked()]);
-    if (bar.dataset.key === key) return;
-    bar.dataset.key = key;
-    if (!sel) { bar.textContent = '로봇을 기다리는 중입니다.'; return; }
-    if (!state.pending) {
-      bar.textContent = `지도를 누르면 ${sel.name}의 이동 목표가 됩니다. 다른 로봇은 카드에서 이름을 눌러 고릅니다.`;
-      return;
-    }
-    const p = state.pending;
-    const blocked = locked() || !state.connected || !sel.nav2_ready || busy(sel);
-    bar.innerHTML = `<span class="target"><b>${esc(sel.name)}</b> → <span class="mono">x ${fixed(p.x)} · y ${fixed(p.y)} · ${deg(p.yaw)}°</span></span>
-      <span class="push"><button class="btn btn-quiet" type="button" data-a="clear">지우기</button>
-      <button class="btn btn-go" type="button" data-a="go" ${blocked ? 'disabled title="지금은 보낼 수 없습니다"' : ''}>이동 보내기</button></span>`;
-    bar.querySelector('[data-a="clear"]').onclick = () => { state.pending = null; renderAll(); };
-    bar.querySelector('[data-a="go"]').onclick = async () => {
-      const target = state.pending; const name = sel.name;
-      state.pending = null; renderAll();
-      await send(name, 'goto', target);
-    };
+    if (p.x < view.x0 || p.y < view.y0 || p.x > view.x0 + view.w || p.y > view.y0 + view.h) return null;
+    return p;
   }
 
-  // ---- 화면 전환 (#log) ----------------------------------------------------
+  function act(p) {
+    const r = sel();
+    const c = contextAt(p);
+    if (c.cmd === 'park') { $('#slot-pick').value = c.slot; }
+    if (c.cmd === 'goto') {
+      const reason = why(r, 'park');
+      if (reason) { toast(reason, 'negative'); return; }
+      const yaw = r.pose ? Math.atan2(p.y - r.pose.y, p.x - r.pose.x) : 0;
+      order(r, 'goto', { x: +p.x.toFixed(3), y: +p.y.toFixed(3), yaw: +yaw.toFixed(3) }, c.label);
+      return;
+    }
+    runCommand(c.cmd);
+  }
+
+  canvas.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (!view) return;
+    const p = pointerWorld(event);
+    if (p) act(p);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!view || event.pointerType === 'touch') return;
+    const p = pointerWorld(event);
+    state.hover = p && sel() ? contextAt(p) : null;
+    drawField();
+  });
+  canvas.addEventListener('pointerleave', () => { state.hover = null; drawField(); });
+  let pressTimer = 0;
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!view) return;
+    const p = pointerWorld(event);
+    if (!p) return;
+    if (event.button === 0) {
+      const hit = state.robots.find((r) => r.pose && Math.hypot(r.pose.x - p.x, r.pose.y - p.y) < 0.12);
+      if (hit) { select(hit.name); return; }
+    }
+    if (event.pointerType === 'touch') {   // 길게 누르면 우클릭과 같다
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => act(p), 550);
+    }
+  });
+  ['pointerup', 'pointercancel'].forEach((t) => canvas.addEventListener(t, () => clearTimeout(pressTimer)));
+
+  function renderLegend() {
+    const items = state.robots.map((r) => `<li><i style="background:${unitColor(r)}"></i>${esc(sign(r))} ${esc(r.name)}</li>`);
+    if (isArena()) {
+      items.push(`<li><i style="background:${css('--zone-park')}"></i>주차</li>`, `<li><i style="background:${css('--zone-fuel')}"></i>주유</li>`, `<li><i style="background:${css('--zone-wait')}"></i>대기선</li>`);
+    } else {
+      items.push(`<li><i style="background:${css('--map-free')}"></i>바닥</li>`, `<li><i style="background:${css('--map-wall')}"></i>벽</li>`);
+    }
+    const html = items.join('');
+    if ($('#legend').innerHTML !== html) $('#legend').innerHTML = html;
+  }
+
+  // ---- 키보드 -----------------------------------------------------------------
+  document.addEventListener('keydown', (event) => {
+    const tag = (event.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+    const k = event.key.toLowerCase();
+    if (k === 'escape') { event.preventDefault(); stopAll(); return; }
+    if (k === ' ') { event.preventDefault(); if (state.drive.on) stopDriving(); runCommand('stop'); return; }
+    if (k === 'm') { toggleDriving(); return; }
+    if (/^[1-9]$/.test(k)) { const r = state.robots[Number(k) - 1]; if (r) select(r.name); return; }
+    if (state.drive.on && ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+      event.preventDefault(); state.drive.keys.add(k); return;
+    }
+    if (!state.drive.on && KEYS[k] && !event.ctrlKey && !event.metaKey && !event.altKey) runCommand(KEYS[k]);
+  });
+  document.addEventListener('keyup', (event) => { state.drive.keys.delete(event.key.toLowerCase()); });
+  window.addEventListener('blur', () => { state.drive.keys.clear(); });
+
+  async function stopAll() {
+    if (state.drive.on) stopDriving();
+    try { await api('POST', '/api/stop'); toast('전체 정지'); } catch (error) { toast(`전체 정지 실패: ${error.message}`, 'negative'); }
+  }
+
+  // ---- 화면 전환과 시작 ---------------------------------------------------------
   function route() {
-    const view = location.hash === '#log' ? 'log' : 'board';
-    $('#view-board').hidden = view !== 'board';
-    $('#view-log').hidden = view !== 'log';
-    document.querySelectorAll('.rail-item[data-view]').forEach((a) => {
-      if (a.dataset.view === view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
-    });
-    if (view === 'board') requestAnimationFrame(() => { layoutMap(); drawMap(); });
+    const v = location.hash === '#log' ? 'log' : 'board';
+    $('#view-board').hidden = v !== 'board';
+    $('#view-log').hidden = v !== 'log';
+    $$('.rail-item[data-view]').forEach((a) => { if (a.dataset.view === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+    if (v === 'board') requestAnimationFrame(() => { layoutField(); drawField(); });
     renderAll();
   }
 
   function renderAll() {
-    renderLock(); renderFresh(); renderFinding(); renderCards(); renderMapBar(); renderLegend();
-    renderLog(); renderLayout(); drawMap();
+    renderLock(); renderFresh(); renderFinding(); renderUnits(); renderCommand();
+    renderMission(); renderLegend(); renderLogView(); drawField();
   }
 
-  // ---- 시작 ----------------------------------------------------------------
-  $('#stop-all').addEventListener('click', async () => {
-    try { await api('POST', '/api/stop'); } catch (error) { $('#finding').textContent = `전체 정지 실패: ${error.message}`; }
-  });
+  $$('.cmd').forEach((b) => b.addEventListener('click', () => { if (!b.dataset.pending) runCommand(b.dataset.cmd); }));
+  $('#stop-all').addEventListener('click', stopAll);
+  $('#drive-toggle').addEventListener('click', toggleDriving);
+  $('#sc-next').addEventListener('click', () => scenario('next'));
+  $('#sc-run').addEventListener('click', () => scenario('run'));
+  $('#sc-stop').addEventListener('click', () => scenario('stop'));
+  $('#sc-reset').addEventListener('click', () => scenario('reset'));
+  $('#confirm-btn').addEventListener('click', () => scenario('confirm'));
   $('#lock').addEventListener('click', () => setPassword(''));
   $('#unlock').addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = $('#password').value;
     $('#unlock-error').textContent = '';
     if (!value) { $('#unlock-error').textContent = '비밀번호를 넣으세요.'; return; }
-    try {
-      await api('POST', '/api/auth/check', null, value);
-      $('#password').value = '';
-      setPassword(value);
-    } catch (error) {
-      $('#unlock-error').textContent = error.message;
-    }
+    try { await api('POST', '/api/auth/check', null, value); $('#password').value = ''; setPassword(value); } catch (error) { $('#unlock-error').textContent = error.message; }
   });
   window.addEventListener('hashchange', route);
-  new ResizeObserver(() => { layoutMap(); drawMap(); }).observe(canvas);
+  new ResizeObserver(() => { layoutField(); drawField(); }).observe(canvas);
   setInterval(renderFresh, 1000);
+  setInterval(driveTick, 100);
 
-  Promise.all([api('GET', '/api/map').catch(() => null), api('GET', '/api/layout').catch(() => null),
-    api('GET', '/api/auth').catch(() => ({ required: false }))])
-    .then(([map, layout, auth]) => {
-      state.auth.required = Boolean(auth && auth.required);
+  Promise.all([api('GET', '/api/layout').catch(() => null), api('GET', '/api/map').catch(() => null), api('GET', '/api/auth').catch(() => ({ required: false }))])
+    .then(([layout, map, auth]) => {
+      state.layout = layout || { kind: 'factory', name: '배치를 받지 못함', slots: {}, routes: {}, vehicles: {} };
       state.map = map;
-      if (layout) state.layout = layout;
-      if (map) $('#map-meta').textContent = `pinky_factory.world · ${(map.width * map.resolution).toFixed(2)} × ${(map.height * map.resolution).toFixed(2)} m · 칸 ${Math.round(map.resolution * 100)} cm`;
-      else $('#map-meta').textContent = '지도를 받지 못했습니다';
-      if (document.fonts) document.fonts.ready.then(() => { layoutMap(); drawMap(); });
-      layoutMap();
+      state.auth.required = Boolean(auth && auth.required);
+      if (layout && layout.teleop) Object.assign(TELEOP, layout.teleop);
+      $('#layout-chip').textContent = isArena() ? '경기장' : '공장 월드';
+      $('#field-title').textContent = isArena() ? '경기장' : '공장 월드';
+      $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '시뮬레이션 임시 배치 · 경기장 월드(#1) 전까지';
+      if (document.fonts) document.fonts.ready.then(() => { layoutField(); drawField(); });
+      layoutField();
       route();
       connect();
     });

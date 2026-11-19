@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Pinky 관제실</title>
+<title>Pinky 관제센터</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <div class="shell">
   <nav class="rail" aria-label="화면">
-    <a class="brand" href="#" title="Pinky 관제실" aria-label="Pinky 관제실">
+    <a class="brand" href="#" title="Pinky 관제센터" aria-label="Pinky 관제센터">
       <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <path d="M5 8.5v7M19 8.5v7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-        <circle cx="12" cy="7.6" r="1.6" fill="currentColor"/>
+        <rect x="6" y="3.5" width="12" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="7.5" y="16" width="9" height="5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M12 14.5V16M9 6.5h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
     </a>
     <a class="rail-item" href="#" data-view="board" title="관제" aria-label="관제">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6.5 9 4.5l6 2 5-2v13l-5 2-6-2-5 2z M9 4.5v13 M15 6.5v13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="8" width="6" height="8" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
       <span>관제</span>
     </a>
     <a class="rail-item" href="#log" data-view="log" title="작업 기록" aria-label="작업 기록">
@@ -35,16 +35,17 @@
 
   <main class="canvas">
     <!-- 관제 화면 -->
-    <section class="view" id="view-board" aria-labelledby="board-title">
-      <header class="title-row">
-        <div class="title-text">
-          <h1 id="board-title">관제실</h1>
-          <p class="finding" id="finding">서버에 연결하는 중입니다.</p>
+    <section class="view game" id="view-board" aria-labelledby="board-title">
+      <header class="hud-top">
+        <div class="hud-title">
+          <h1 id="board-title">관제센터</h1>
+          <span class="layout-chip" id="layout-chip">경기장</span>
         </div>
-        <div class="title-actions">
+        <p class="finding" id="finding">서버에 연결하는 중입니다.</p>
+        <div class="hud-actions">
           <button class="btn btn-quiet" id="lock" type="button" hidden>잠그기</button>
           <p class="fresh" id="fresh"><span class="fresh-dot" aria-hidden="true"></span><span id="fresh-text">연결 중</span></p>
-          <button class="btn btn-stop" id="stop-all" type="button">전체 정지</button>
+          <button class="btn btn-stop" id="stop-all" type="button">전체 정지 <kbd class="key key-dark">Esc</kbd></button>
         </div>
       </header>
 
@@ -56,90 +57,132 @@
         <p class="unlock-error" id="unlock-error" role="status"></p>
       </form>
 
-      <div class="board">
-        <article class="card map-card" aria-labelledby="map-title">
-          <header class="card-head">
-            <h2 id="map-title">배치도</h2>
-            <p class="meta" id="map-meta">pinky_factory.world</p>
+      <div class="arena-grid">
+        <!-- 유닛 (로봇) -->
+        <section class="panel units" aria-labelledby="units-title">
+          <header class="panel-head"><h2 id="units-title">유닛</h2><span class="meta">숫자키로 선택</span></header>
+          <div class="unit-list" id="units"></div>
+        </section>
+
+        <!-- 경기장 -->
+        <section class="panel field" aria-labelledby="field-title">
+          <header class="panel-head">
+            <h2 id="field-title">경기장</h2>
+            <p class="meta" id="field-meta">2000 × 2000 mm · 반시계 주행</p>
             <ul class="legend" id="legend"></ul>
           </header>
-          <div class="map-bar" id="map-bar"></div>
-          <div class="map-wrap"><canvas id="map" aria-label="로봇 위치와 주차 칸이 표시된 지도"></canvas></div>
-        </article>
+          <div class="field-wrap" id="field-wrap">
+            <canvas id="field" aria-label="경기장 도면 위 로봇 위치. 우클릭으로 선택한 로봇에게 명령합니다."></canvas>
+            <p class="field-hint" id="field-hint">우클릭: 선택한 유닛을 그곳으로 · 주차 칸·주유구역을 우클릭하면 그 행동</p>
+          </div>
+        </section>
 
-        <div class="robots" id="robots"></div>
-
-        <article class="card log-card" aria-labelledby="log-title">
-          <header class="card-head">
-            <h2 id="log-title">작업 기록</h2>
-            <a class="head-link" href="#log" id="log-count">전체 보기</a>
+        <!-- 미션 -->
+        <section class="panel mission" aria-labelledby="mission-title">
+          <header class="panel-head">
+            <h2 id="mission-title">시연 시나리오</h2>
+            <span class="meta num" id="mission-progress">—</span>
           </header>
-          <div class="table-wrap"><table class="table" id="log-table"></table></div>
-        </article>
-
-        <article class="card layout-card" aria-labelledby="slots-title">
-          <header class="card-head">
-            <h2 id="slots-title">주차 칸과 경로</h2>
-            <p class="meta">map 좌표 · 공장 월드 임시 값</p>
-          </header>
-          <div class="table-wrap"><table class="table" id="slots-table"></table></div>
-          <div class="table-wrap"><table class="table" id="routes-table"></table></div>
-        </article>
+          <div class="confirm" id="confirm" hidden>
+            <p id="confirm-text"></p>
+            <button class="btn btn-go" id="confirm-btn" type="button">확인했습니다</button>
+          </div>
+          <ol class="steps" id="steps"></ol>
+          <div class="mission-controls">
+            <button class="btn btn-go" id="sc-next" type="button">다음 단계</button>
+            <button class="btn" id="sc-run" type="button">끝까지</button>
+            <button class="btn btn-halt" id="sc-stop" type="button">멈춤</button>
+            <button class="btn btn-quiet" id="sc-reset" type="button">처음부터</button>
+          </div>
+          <p class="card-error" id="mission-error" role="status"></p>
+        </section>
       </div>
+
+      <!-- 명령 막대 -->
+      <section class="panel commandbar" aria-labelledby="cmd-title">
+        <div class="cmd-unit">
+          <h2 class="sr" id="cmd-title">명령</h2>
+          <span class="cmd-badge" id="cmd-badge">A</span>
+          <div class="cmd-who"><b id="cmd-name">—</b><span id="cmd-state">—</span></div>
+        </div>
+        <div class="cmd-groups" id="cmd-groups">
+          <div class="cmd-group" aria-label="주행">
+            <span class="cmd-label">주행</span>
+            <button class="cmd" type="button" data-cmd="drive1"><span>1번 트랙</span><kbd class="key">Q</kbd></button>
+            <button class="cmd" type="button" data-cmd="drive2"><span>2번 트랙</span><kbd class="key">E</kbd></button>
+            <button class="cmd" type="button" data-cmd="lane"><span>차선 변경</span><kbd class="key">C</kbd></button>
+            <button class="cmd" type="button" data-cmd="gap" data-pending="gap"><span>간격 조절</span><small>준비 중 #12</small></button>
+          </div>
+          <div class="cmd-group" aria-label="주차">
+            <span class="cmd-label">주차</span>
+            <label class="sr" for="slot-pick">주차 칸</label>
+            <select class="select" id="slot-pick"></select>
+            <button class="cmd" type="button" data-cmd="park"><span>주차</span><kbd class="key">P</kbd></button>
+            <button class="cmd" type="button" data-cmd="unpark"><span>출차</span><kbd class="key">U</kbd></button>
+            <button class="cmd" type="button" data-cmd="precise" data-pending="park_precise"><span>정밀 주차</span><small>준비 중 #8</small></button>
+          </div>
+          <div class="cmd-group" aria-label="주유">
+            <span class="cmd-label">주유</span>
+            <button class="cmd" type="button" data-cmd="fuel_wait"><span>대기선 30</span><kbd class="key">F</kbd></button>
+            <button class="cmd" type="button" data-cmd="fuel_enter"><span>주유구역 20</span><kbd class="key">G</kbd></button>
+            <button class="cmd" type="button" data-cmd="fuel_leave"><span>트랙 복귀</span><kbd class="key">H</kbd></button>
+          </div>
+          <div class="cmd-group" aria-label="멈춤">
+            <span class="cmd-label">멈춤</span>
+            <button class="cmd" type="button" data-cmd="cancel"><span>작업 취소</span><kbd class="key">X</kbd></button>
+            <button class="cmd cmd-halt" type="button" data-cmd="stop"><span>정지</span><kbd class="key">Space</kbd></button>
+          </div>
+        </div>
+        <div class="drive-pad">
+          <button class="btn drive-toggle" id="drive-toggle" type="button" aria-pressed="false">직접 운전 <kbd class="key">M</kbd></button>
+          <div class="joystick" id="joystick" aria-label="조이스틱: 끌어서 운전, 놓으면 정지"><span class="stick" id="stick"></span></div>
+          <div class="gauges">
+            <div class="gauge"><span>전진</span><b class="num" id="g-lin">0.00</b><small>m/s</small><i><em id="g-lin-bar"></em></i></div>
+            <div class="gauge"><span>회전</span><b class="num" id="g-ang">0.00</b><small>rad/s</small><i><em id="g-ang-bar"></em></i></div>
+          </div>
+        </div>
+        <p class="cmd-toast" id="cmd-toast" role="status"></p>
+      </section>
     </section>
 
     <!-- 작업 기록 화면 -->
     <section class="view" id="view-log" aria-labelledby="log-view-title" hidden>
-      <header class="title-row">
-        <div class="title-text">
-          <h1 id="log-view-title">작업 기록</h1>
-          <p class="finding" id="log-summary">—</p>
-        </div>
+      <header class="hud-top">
+        <div class="hud-title"><h1 id="log-view-title">작업 기록</h1></div>
+        <p class="finding" id="log-summary">—</p>
       </header>
-      <article class="card full-log">
+      <article class="panel">
         <div class="table-wrap"><table class="table" id="log-full"></table></div>
       </article>
     </section>
   </main>
 </div>
 
-<template id="robot-card">
-  <article class="card robot">
-    <header class="robot-head">
-      <button class="robot-name" type="button" data-r="select" aria-pressed="false">
-        <span class="swatch" data-r="swatch" aria-hidden="true"></span>
-        <span class="name" data-r="name"></span>
-      </button>
-      <span class="domain" data-r="domain"></span>
+<template id="unit-card">
+  <article class="unit">
+    <button class="unit-head" type="button" data-r="select" aria-pressed="false">
+      <span class="callsign" data-r="callsign">A</span>
+      <span class="unit-name"><b data-r="name"></b><small data-r="domain"></small></span>
+      <kbd class="key" data-r="hotkey">1</kbd>
+    </button>
+    <div class="unit-row">
       <span class="pill" data-r="state"></span>
-    </header>
-    <p class="task-line" data-r="task">—</p>
-    <dl class="figures">
-      <div><dt>x</dt><dd data-r="x">—</dd></div>
-      <div><dt>y</dt><dd data-r="y">—</dd></div>
-      <div><dt>방향</dt><dd data-r="yaw">—</dd></div>
-      <div><dt>속도</dt><dd data-r="speed">—</dd></div>
-    </dl>
-    <div class="controls">
-      <div class="control-row">
-        <label class="sr" data-r="slot-label">주차 칸</label>
-        <select class="select" data-r="slot"></select>
-        <button class="btn" type="button" data-r="park">주차</button>
-        <button class="btn" type="button" data-r="unpark">출차</button>
-      </div>
-      <div class="control-row">
-        <label class="sr" data-r="route-label">경로</label>
-        <select class="select" data-r="route"></select>
-        <button class="btn" type="button" data-r="lap">주행</button>
-        <button class="btn btn-quiet" type="button" data-r="cancel">작업 취소</button>
-        <button class="btn btn-halt" type="button" data-r="stop">정지</button>
-      </div>
+      <span class="unit-task" data-r="task">—</span>
     </div>
-    <p class="card-error" data-r="error" role="status"></p>
+    <div class="progress" aria-hidden="true"><i data-r="progress"></i></div>
+    <canvas class="sprite" data-r="sprite" width="240" height="64" aria-hidden="true"></canvas>
+    <div class="vehicle-pick" role="group" data-r="vehicles"></div>
+    <dl class="figures">
+      <div><dt>x (m)</dt><dd data-r="x">—</dd></div>
+      <div><dt>y (m)</dt><dd data-r="y">—</dd></div>
+      <div><dt>방향</dt><dd data-r="yaw">—</dd></div>
+      <div><dt>m/s</dt><dd data-r="speed">—</dd></div>
+    </dl>
     <p class="link-line" data-r="link"></p>
   </article>
 </template>
 
+<script src="arena.js"></script>
 <script src="demo.js"></script>
 <script src="app.js"></script>
 </body>
