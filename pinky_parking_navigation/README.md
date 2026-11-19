@@ -13,6 +13,7 @@
 | `map` | `maps/factory.yaml` | 지도 YAML |
 | `params_file` | `pinky_navigation/params/nav2_params.yaml` | 기준 Nav2 파라미터 |
 | `use_sim_time` | `true` | 시뮬레이션 시계(`/clock`). **실물 로봇은 `false`** |
+| `max_speed` | (공식 값 0.25) | 직진 속도 상한 [m/s]. 컨트롤러 목표 속도와 속도 평활기 최대 속도를 함께 낮춥니다. 실물 첫 시험은 `0.1` 이하로 |
 
 AMCL 초기 위치와 `lifecycle_nodes_nav`(`smoother_server` 추가)는 덮어씁니다. 목표 도착 허용 오차는 0.25 m입니다(`xy_goal_tolerance`).
 

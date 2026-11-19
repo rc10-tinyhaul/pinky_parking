@@ -38,8 +38,9 @@ def setup(context):
             '먼저 지도를 만들어 저장하세요 (pinky_parking_navigation/README.md 의 "지도 만들기").')
     nav_share = Path(get_package_share_directory('pinky_navigation'))
     base_file = arg('params_file') or str(nav_share / 'params/nav2_params.yaml')
+    max_speed = float(arg('max_speed')) if arg('max_speed') else None
     params = nav2_params(yaml.safe_load(Path(base_file).read_text()),
-                         float(arg('x')), float(arg('y')), float(arg('yaw')))
+                         float(arg('x')), float(arg('y')), float(arg('yaw')), max_speed=max_speed)
 
     domain_id = arg('domain_id')
     use_sim_time = 'True' if arg('use_sim_time').lower() == 'true' else 'False'
@@ -64,6 +65,9 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='0.0', description='AMCL 초기 위치 x [m]'),
         DeclareLaunchArgument('y', default_value='0.0', description='AMCL 초기 위치 y [m]'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='AMCL 초기 방향 [rad]'),
+        DeclareLaunchArgument(
+            'max_speed', default_value='',
+            description='직진 속도 상한 [m/s]. 비우면 공식 값 (실물 첫 시험은 0.1 등으로 낮춤)'),
         DeclareLaunchArgument(
             'use_sim_time', default_value='true',
             description='시뮬레이션 시계(/clock). 실물 로봇은 false'),
