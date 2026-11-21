@@ -40,6 +40,19 @@ fuel:
   enter: {x: -0.995, y: -0.195, yaw: -1.5708} # 주유구역 안
   leave: {x: -0.595, y: -0.28, yaw: -1.5708}  # 2번 트랙 왼쪽 직선으로 복귀
 
+# ArUco 마커 (도면의 번호 사각형). x, y = 마커 가운데, yaw = 마커 오른쪽 변의 방향(0 이면 마커 위쪽이 +y).
+# 위치는 하은 데이터셋(dataset/configs/arena.yaml 의 markers)과 같다. size = 검은 정사각형 한 변 [m].
+# 월드에는 scripts/make_arena_sim.py 가 그림으로 넣는다. 실물은 scripts/make_markers.py --ids 10,11,20,30
+# --size 50 으로 인쇄해 위쪽 화살표를 도면 위(+y)로 붙인다.
+markers:
+  dictionary: DICT_4X4_50       # 로봇 카메라 서버(pinky_camera.py)와 같은 사전
+  size: 0.05
+  items:
+    10: {x: 0.0, y: 0.0, yaw: 0.0}        # 두 주차 칸 경계
+    11: {x: 0.0, y: 0.30, yaw: 0.0}       # 11번 칸 위 끝
+    20: {x: -0.995, y: -0.34, yaw: 0.0}   # 주유구역 아래쪽
+    30: {x: -0.995, y: 0.095, yaw: 0.0}   # 대기선 위
+
 # 차종: 핑키프로 130 x 140 x 162 mm 에 트레일러를 단 전체 길이.
 vehicles:
   T00: {length: 0.14, width: 0.13, trailer: 0.0, name: 트레일러 없음}
