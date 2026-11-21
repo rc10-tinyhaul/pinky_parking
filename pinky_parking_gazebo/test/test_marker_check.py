@@ -43,3 +43,32 @@ def test_arena_markers_have_models_and_world_includes():
         assert (folder / 'model.sdf').is_file() and (folder / 'model.config').is_file()
         assert (folder / f'materials/textures/aruco_{marker_id}.png').is_file()
         assert f'<uri>model://aruco_{marker_id}</uri>' in world
+
+
+def test_corner_order_is_aruco_order():
+    """꼭짓점은 마커의 왼쪽 위부터 시계 방향 (마커를 똑바로 그린 영상에서)."""
+    from pinky_parking_gazebo.marker_check import make_corner_detector
+    corners = make_corner_detector()(synthetic(30))[30]
+    (u0, v0), (u1, v1), (u2, v2), (u3, v3) = corners
+    assert u0 < u1 and v1 < v2 and u2 > u3 and v0 < v3
+
+
+class FakeImage:
+    """sensor_msgs/Image 대신 (mono8)."""
+
+    def __init__(self, gray):
+        self.height, self.width = gray.shape
+        self.step, self.encoding, self.data = self.width, 'mono8', gray.tobytes()
+
+
+def test_sim_camera_reply_has_markers_and_camera():
+    from pinky_parking_gazebo.sim_camera import Frames
+    from pinky_parking_gazebo.sim_camera import markers_reply
+    frames = Frames(forward=0.035)
+    frames.set_info(985.5, 640.0, 360.0)
+    frames.update(FakeImage(synthetic(10)))
+    reply = markers_reply(frames)
+    assert [m['id'] for m in reply['markers']] == [10]
+    assert len(reply['markers'][0]['corners']) == 4
+    assert reply['camera'] == {'focal_px': 985.5, 'cx': 640.0, 'cy': 360.0, 'forward': 0.035}
+    assert (reply['width'], reply['height']) == (200, 200) and frames.jpeg

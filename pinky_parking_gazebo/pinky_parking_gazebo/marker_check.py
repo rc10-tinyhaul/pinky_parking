@@ -15,8 +15,13 @@ import time
 STRETCH = 2      # 납작한 마커를 찾을 때 영상을 세로로 늘리는 배수 (pinky_camera.py 와 같음)
 
 
-def make_detector(dictionary='DICT_4X4_50'):
-    """회색 영상 → [(번호, (가운데 u, v))]. OpenCV 4.6(옛 API)과 4.7 이상 모두 된다."""
+def make_corner_detector(dictionary='DICT_4X4_50'):
+    """
+    회색 영상 → {번호: 네 꼭짓점 [[u, v] x 4]} (ArUco 순서: 마커의 왼쪽 위부터 시계 방향).
+
+    OpenCV 4.6(옛 API)과 4.7 이상 모두 된다. 원래 크기에서 못 찾은 마커는 세로로 늘린 영상에서 찾고,
+    꼭짓점은 원래 영상 좌표로 돌려준다.
+    """
     import cv2
     table = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary))
     if hasattr(cv2.aruco, 'ArucoDetector'):
@@ -40,9 +45,19 @@ def make_detector(dictionary='DICT_4X4_50'):
                 continue
             for c, marker_id in zip(corners, ids.flatten()):
                 points = c.reshape(4, 2)
-                center = (float(points[:, 0].mean()), float(points[:, 1].mean()) / stretch)
-                found.setdefault(int(marker_id), center)
-        return sorted(found.items())
+                corners = [[round(float(u), 1), round(float(v) / stretch, 1)] for u, v in points]
+                found.setdefault(int(marker_id), corners)
+        return found
+    return detect
+
+
+def make_detector(dictionary='DICT_4X4_50'):
+    """회색 영상 → [(번호, (가운데 u, v))]."""
+    corners = make_corner_detector(dictionary)
+
+    def detect(gray):
+        return sorted((marker_id, (sum(p[0] for p in pts) / 4, sum(p[1] for p in pts) / 4))
+                      for marker_id, pts in corners(gray).items())
     return detect
 
 

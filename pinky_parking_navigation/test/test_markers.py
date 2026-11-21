@@ -48,3 +48,43 @@ def test_register_then_localize_round_trip():
 def test_median_ignores_one_bad_sample():
     poses = [(0.2, 0.0, 0.1), (0.21, 0.01, 0.1), (0.9, 0.5, 0.1)]
     assert geo.median_pose(poses)[:2] == (0.21, 0.01)
+
+
+def test_detection_payload():
+    d = geo.detection(11, (0.30, 0.0, 0.0), registered=True)
+    assert d == {'id': 11, 'x': 0.3, 'y': 0.0, 'yaw': 0.0, 'distance': 0.3, 'bearing': 0.0,
+                 'registered': True}
+    left = geo.detection(20, (0.2, 0.2, 1.0))
+    assert left['bearing'] == pytest.approx(math.pi / 4, abs=1e-4) and not left['registered']
+
+
+def test_camera_from_reply_uses_server_values_when_given():
+    defaults = (635.0, (320.0, 240.0), 0.05)
+    assert geo.camera_from_reply({'markers': []}, *defaults) == defaults     # 실물 서버
+    sim = {'camera': {'focal_px': 985.5, 'cx': 640.0, 'cy': 360.0, 'forward': 0.035}}
+    assert geo.camera_from_reply(sim, *defaults) == (985.5, (640.0, 360.0), 0.035)
+
+
+def test_sim_camera_values_recover_pose():
+    """시뮬레이션 카메라(1280 x 720, 화각 66°)의 값으로도 바닥 마커 위치가 맞게 나온다."""
+    focal, center = 640.0 / math.tan(1.1519 / 2), (640.0, 360.0)
+    corners = project((0.30, 0.02, 0.1), focal=focal, center=center, cam_height=0.063,
+                      pitch=math.radians(8.0), forward=0.035)
+    result = geo.marker_in_robot(corners, 0.05, focal, center, camera_forward=0.035)
+    assert result['pose'][0] == pytest.approx(0.30, abs=0.004)
+    assert result['pose'][1] == pytest.approx(0.02, abs=0.004)
+
+
+def test_arena_markers_match_arena_layout():
+    """markers.yaml 의 경기장 마커(10, 11, 20, 30)는 경기장 원본(arena.yaml)과 같은 자리다."""
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    arena_file = root / 'pinky_parking_control/config/arena.yaml'
+    if not arena_file.is_file():
+        pytest.skip('경기장 원본이 없습니다')
+    arena = yaml.safe_load(arena_file.read_text(encoding='utf-8'))['markers']['items']
+    table = yaml.safe_load((root / 'pinky_parking_navigation/config/markers.yaml')
+                           .read_text(encoding='utf-8'))['markers']
+    for marker_id, m in arena.items():
+        assert table[marker_id] == {'x': m['x'], 'y': m['y'], 'yaw': m['yaw']}

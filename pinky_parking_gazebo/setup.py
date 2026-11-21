@@ -40,6 +40,7 @@ setup(
     entry_points={
         'console_scripts': [
             'marker_check = pinky_parking_gazebo.marker_check:main',
+            'sim_camera = pinky_parking_gazebo.sim_camera:main',
         ],
     },
 )

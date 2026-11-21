@@ -90,3 +90,29 @@ def difference(a, b):
     """두 위치의 거리 [m] 와 방향 차이 [rad]."""
     return (math.hypot(a[0] - b[0], a[1] - b[1]),
             abs(math.atan2(math.sin(a[2] - b[2]), math.cos(a[2] - b[2]))))
+
+
+def detection(marker_id, in_robot, registered=False):
+    """
+    로봇 기준 마커 하나 → 토픽에 싣는 값 (marker_detections).
+
+    x: 앞 [m], y: 왼쪽 [m], yaw: 마커 오른쪽 변의 방향 [rad], distance: 로봇 중심에서 마커 가운데까지 [m],
+    bearing: 마커가 보이는 방향 [rad] (0 = 정면, + = 왼쪽).
+    """
+    x, y, yaw = in_robot
+    return {'id': int(marker_id), 'x': round(x, 4), 'y': round(y, 4), 'yaw': round(yaw, 4),
+            'distance': round(math.hypot(x, y), 4), 'bearing': round(math.atan2(y, x), 4),
+            'registered': bool(registered)}
+
+
+def camera_from_reply(reply, focal, center, forward):
+    """
+    카메라 서버 응답에 camera(초점 거리, 화면 중심, 앞쪽 거리)가 있으면 그 값을, 없으면 설정 값을 쓴다.
+
+    시뮬레이션 카메라 서버(pinky_parking_gazebo/sim_camera.py)는 Gazebo 카메라 값을 싣고, 실물 서버는
+    싣지 않으므로 markers.yaml 의 camera 값을 쓴다.
+    """
+    camera = reply.get('camera') or {}
+    if 'cx' in camera and 'cy' in camera:
+        center = (float(camera['cx']), float(camera['cy']))
+    return (float(camera.get('focal_px', focal)), center, float(camera.get('forward', forward)))

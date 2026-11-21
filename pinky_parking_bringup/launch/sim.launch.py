@@ -19,6 +19,7 @@ from launch.actions import TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from pinky_parking_bringup.robots import load_robots
+from pinky_parking_gazebo.sim import camera_port
 
 
 def include(package, launch_file, arguments):
@@ -49,7 +50,10 @@ def setup(context):
             'localization': arg('localization'), 'max_speed': arg('max_speed'),
             'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
             'lookahead': arg('lookahead'), 'fine_amcl': arg('fine_amcl'),
-            'pose_from_tf': arg('fine_amcl'), **pose}))
+            'pose_from_tf': arg('fine_amcl'), **pose,
+            # 카메라를 켜면 시뮬레이션 카메라 서버의 마커로 위치를 바로잡는다 (실물과 같은 marker_localizer)
+            'camera_url': (f"http://localhost:{camera_port(robot['domain_id'])}"
+                           if arg('camera').lower() == 'true' else '')}))
     if arg('nav').lower() == 'true':
         actions.append(TimerAction(period=float(arg('nav_delay')), actions=nav_actions))
     return actions

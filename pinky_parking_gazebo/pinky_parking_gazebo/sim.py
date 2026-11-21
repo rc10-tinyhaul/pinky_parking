@@ -44,3 +44,8 @@ def bridge_entries(name, camera=True):
         entries.append(entry(f'{name}/camera/camera_info', '/camera/camera_info',
                              'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'))
     return entries
+
+
+def camera_port(domain_id):
+    """로봇마다 다른 시뮬레이션 카메라 서버 포트 (8000 + 도메인: pinky1 = 8011)."""
+    return 8000 + int(domain_id)
