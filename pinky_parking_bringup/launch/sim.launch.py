@@ -1,7 +1,7 @@
 """
 시뮬레이션 전체를 한 번에 띄운다: Gazebo 월드, 로봇들, 로봇마다 Nav2.
 
-로봇 목록(이름, 도메인, 위치)은 config/robots.yaml 에서 읽는다.
+로봇 목록(이름, 도메인, 위치)과 월드는 config/robots.yaml 에서 읽는다. 기본은 경기장(arena.world, maps/arena.yaml).
 Nav2 는 Gazebo 와 로봇이 뜬 뒤(nav_delay 초) 시작한다.
 
   ros2 launch pinky_parking_bringup sim.launch.py
@@ -57,7 +57,7 @@ def setup(context):
 
 def generate_launch_description():
     navigation_share = Path(get_package_share_directory('pinky_parking_navigation'))
-    default_map = navigation_share / 'maps/factory.yaml'
+    default_map = navigation_share / 'maps/arena.yaml'
     return LaunchDescription([
         DeclareLaunchArgument(
             'robots', default_value='', description='로봇 목록 YAML (기본: config/robots.yaml)'),

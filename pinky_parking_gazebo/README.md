@@ -10,7 +10,7 @@ Gazebo 월드를 띄웁니다.
 
 | 인자 | 기본값 | 설명 |
 |---|---|---|
-| `world_name` | `pinky_factory.world` | 월드 파일 이름. 이 패키지 `worlds/`를 먼저 찾고, 없으면 `pinky_gz_sim/worlds` |
+| `world_name` | `arena.world` | 월드 파일 이름. 이 패키지 `worlds/`를 먼저 찾고, 없으면 `pinky_gz_sim/worlds` |
 | `gui` | `true` | Gazebo 창 |
 | `headless` | `false` | 화면 없는 환경용 센서 렌더링 (`gui:=false`와 함께) |
 

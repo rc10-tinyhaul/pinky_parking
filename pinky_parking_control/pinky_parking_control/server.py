@@ -365,7 +365,7 @@ def main():
     parser.add_argument('--routes', default=str(_share('pinky_parking_driving')
                                                 / 'config/route.yaml'))
     parser.add_argument('--map', default=str(_share('pinky_parking_navigation')
-                                             / 'maps/factory.yaml'))
+                                             / 'maps/arena.yaml'))
     parser.add_argument('--layout', choices=['auto', 'arena', 'factory'])
     parser.add_argument('--room-map', default='',
                         help='경기장 배치에서 겹쳐 보여 줄 고정벽 지도 YAML (snapshot_map 이 만든 것)')

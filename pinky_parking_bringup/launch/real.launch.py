@@ -4,7 +4,7 @@
 로봇 자체(구동, 라이다)는 로봇에서 공식 bringup 과 cmd_vel_watchdog 로 켠다 (docs/real_robot.md).
 
 로봇 목록(이름, 도메인, 시작 위치)은 robots YAML 에서 읽는다. 기본은 경기장 주차 칸에서 시작하는
-config/robots_arena.yaml 이고, 경기장이 아직 없으므로 기본 위치 추정은 odom(시작 위치 + 바퀴 기록)이다.
+config/robots.yaml 이다. 위치 추정 방식은 인자 localization 으로 고른다(기본값은 아래 인자 선언).
 
 로봇은 자기 도메인 + 100 (pinky1 = 111)에서 켠다. 로봇 시계가 틀려도 되도록 clock_bridge 가
 시각을 PC 시계로 고쳐 원래 도메인(11)으로 넘긴다 (clock_bridge.py).
@@ -32,7 +32,7 @@ def setup(context):
     share = Path(get_package_share_directory('pinky_parking_bringup'))
     nav_launch = (Path(get_package_share_directory('pinky_parking_navigation'))
                   / 'launch/robot_nav.launch.py')
-    _, robots = load_robots(arg('robots') or share / 'config/robots_arena.yaml')
+    _, robots = load_robots(arg('robots') or share / 'config/robots.yaml')
     only = [n for n in arg('only').split(',') if n]
     cameras = dict(item.split('=', 1) for item in arg('cameras').split(',') if '=' in item)
     actions = []
@@ -67,7 +67,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'robots', default_value='',
-            description='로봇 목록 YAML (기본: config/robots_arena.yaml, 주차 칸에서 시작)'),
+            description='로봇 목록 YAML (기본: config/robots.yaml, 주차 칸에서 시작)'),
         DeclareLaunchArgument(
             'only', default_value='', description='일부만: 이름을 쉼표로 (예: pinky1)'),
         DeclareLaunchArgument(

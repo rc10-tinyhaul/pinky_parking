@@ -3,7 +3,7 @@
 
 robots.yaml 형식:
 
-    world_name: pinky_factory.world
+    world_name: arena.world
     robots:
       - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: T00}
 
@@ -31,4 +31,4 @@ def load_robots(path):
         r.setdefault('y', 0.0)
         r.setdefault('yaw', 0.0)
         r.setdefault('vehicle', 'T00')
-    return data.get('world_name', 'pinky_factory.world'), robots
+    return data.get('world_name', 'arena.world'), robots

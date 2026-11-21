@@ -155,7 +155,7 @@ def generate_launch_description():
             'use_sim_time', default_value='true',
             description='시뮬레이션 시계(/clock). 실물 로봇은 false'),
         DeclareLaunchArgument(
-            'map', default_value=str(share / 'maps/factory.yaml'), description='지도 YAML'),
+            'map', default_value=str(share / 'maps/arena.yaml'), description='지도 YAML'),
         DeclareLaunchArgument(
             'params_file', default_value='',
             description='기준 Nav2 파라미터 (기본: pinky_navigation/params/nav2_params.yaml)'),
