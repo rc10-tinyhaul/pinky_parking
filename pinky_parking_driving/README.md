@@ -19,4 +19,4 @@ ROS_DOMAIN_ID=12 ros2 run pinky_parking_driving lap --route lap
 
 ## 설정
 
-`config/route.yaml`: 경로 이름별 경유점 목록. 각 점은 `x`, `y` [m], `yaw` [rad] (`map` 좌표). 지금 값은 공장 월드의 임시 경로입니다.
+`config/route.yaml`: 경로 이름별 경유점 목록. 각 점은 `x`, `y` [m], `yaw` [rad] (`map` 좌표). `lap`은 1번 트랙을 반시계로 도는 경유점입니다. 차선 중심선을 따라가는 주행은 관제센터(`pinky_parking_control`)의 `drive`가 합니다.

@@ -19,4 +19,4 @@ ros2 run pinky_parking_docking park --list
 
 ## 설정
 
-`config/slots.yaml`: 칸 이름별 `x`, `y` [m], `yaw` [rad] (`map` 좌표). 지금 값은 공장 월드의 임시 위치입니다.
+`config/slots.yaml`: 칸 이름별 `x`, `y` [m], `yaw` [rad] (`map` 좌표). 위치는 `pinky_parking_control/config/arena.yaml`의 칸과 같고, 방향은 열린 쪽에서 들어가 섰을 때의 방향입니다. Nav2 목표 하나만 보내므로 도착 허용 오차만큼만 맞고, 칸에 똑바로 들어가는 주차는 관제센터의 `park`가 합니다.
