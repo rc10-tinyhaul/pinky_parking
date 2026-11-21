@@ -1,5 +1,5 @@
 """
-배치: 로봇이 다니는 곳의 좌표 (경기장 도면, 또는 지금 시뮬레이션용 공장 월드).
+배치: 로봇이 다니는 곳의 좌표 (경기장 도면, config/arena.yaml).
 
 행동 단위(주차, 트랙 주행, 차선 변경, 주유)를 Nav2 목표 위치 목록으로 바꾸는 일을 한다.
 ROS 를 import 하지 않으므로 ROS 없이 시험할 수 있다.
@@ -9,7 +9,7 @@ import math
 from pinky_parking_control.model import normalize_angle
 from pinky_parking_control.model import parse_pose
 
-ARENA, FACTORY = 'arena', 'factory'
+ARENA = 'arena'
 FUEL_STEPS = ('wait', 'enter', 'leave')
 WAYPOINTS_PER_LAP = 12   # 한 바퀴를 12 점으로 (1번 트랙 약 0.31 m 간격)
 PATH_STEP = 0.03         # 연속 경로의 점 간격 [m]
@@ -23,7 +23,7 @@ PARKED_ALONG = 0.06
 
 
 class NotInLayout(Exception):
-    """지금 배치에 없는 행동 (예: 공장 월드에서 트랙 주행)."""
+    """배치에 없는 이름이나 행동 (예: 없는 트랙 번호)."""
 
 
 class Stadium:
@@ -209,34 +209,3 @@ class ArenaLayout:
         out['routes'] = {f'track_{t}': [s.pose(s.length * i / 48) for i in range(48)]
                          for t, s in self.tracks.items()}
         return out
-
-
-class FactoryLayout:
-    """지금 시뮬레이션용 공식 공장 월드 (slots.yaml, route.yaml, 출차 임시 위치)."""
-
-    kind = FACTORY
-
-    def __init__(self, slots, routes, exits, vehicles):
-        self.slots = {k: parse_pose(v) for k, v in (slots or {}).items()}
-        self.routes = {k: [parse_pose(p) for p in v] for k, v in (routes or {}).items()}
-        self.exits = {k: parse_pose(v) for k, v in (exits or {}).items()}
-        self.vehicles = vehicles
-
-    def drive(self, track_id, pose, laps=1):
-        raise NotInLayout('트랙 주행은 경기장 배치에서만 됩니다 (지금은 공장 월드)')
-
-    lane_change = drive_path = lane_change_path = drive
-
-    def fuel_poses(self, step):
-        raise NotInLayout('주유구역은 경기장 배치에서만 있습니다 (지금은 공장 월드)')
-
-    def to_dict(self):
-        return {'kind': FACTORY, 'name': '공장 월드 (예전 기본)', 'slots': self.slots,
-                'routes': self.routes, 'exits': self.exits, 'vehicles': self.vehicles}
-
-
-def choose_layout(setting, world_name):
-    """control.yaml 의 layout: arena | factory | auto. auto 는 월드 이름으로 고른다."""
-    if setting in (ARENA, FACTORY):
-        return setting
-    return FACTORY if 'factory' in str(world_name) else ARENA

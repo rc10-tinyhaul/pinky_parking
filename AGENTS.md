@@ -82,7 +82,6 @@ src/pinky_parking/scripts/smoke_test.sh    # 경기장 사이클(출차, 트랙,
 - `nav2_simple_commander`의 `BasicNavigator.waitUntilNav2Active()`는 기본값으로 초기 위치 (0, 0)을 보내 AMCL 위치를 덮어씁니다. `localizer='robot_localization'`을 줍니다(`park.py` 참고).
 - 경기장 좌표의 원본은 `pinky_parking_control/config/arena.yaml` 하나입니다. 경기장 월드(`worlds/arena.world`)와 지도(`maps/arena`, 실물용 `maps/arena_open`)는 `scripts/make_arena_sim.py`가 여기서 만들고, `slots.yaml`·`route.yaml`도 같은 값을 씁니다. 고치면 스크립트를 다시 돌리고 두 파일을 맞춥니다. 월드의 벽과 블록은 시뮬레이션 AMCL용이라 실물 경기장에는 없습니다.
 - 로봇 시작 자리: A(pinky1)는 11번 칸에서 위쪽, B(pinky2)는 10번 칸에서 아래쪽을 봅니다. B는 트레일러가 칸 안에 들도록 칸 중심보다 5 cm 아래(0, −0.20)에 섭니다. `dataset/xyz`의 기준 경로 CSV와 같습니다.
-- 공식 공장 월드(`pinky_factory.world`, `maps/factory`)는 예전 기본값으로, 지금은 관리하지 않습니다.
 - 지도는 로봇 한 대만 띄워 만듭니다(`pinky_parking_navigation/README.md`의 "지도 만들기").
 - 파이썬 가상환경(`.venv`)이 켜진 셸에서는 colcon 빌드가 실패합니다(`catkin_pkg` 없음).
 - Intel + NVIDIA 노트북에서 `/dev/dri` 전체를 컨테이너에 넘기면 화면이 깨집니다. `run.sh`가 알아서 고릅니다.

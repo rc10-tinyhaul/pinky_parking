@@ -3,12 +3,12 @@
 
   기본 이동   goto, cancel, stop, 직접 운전(teleop)
   주차·출차   park, unpark
-  주행        drive(트랙 1·2 한 바퀴), lane_change(차선 변경), lap(공장 월드 경로)
+  주행        drive(트랙 1·2 한 바퀴), lane_change(차선 변경)
   주유        fuel(wait 대기선 → enter 주유구역 → leave 트랙 복귀)
   차종        vehicle(T00 · T10 · T15)
 
 행동 하나는 Nav2 목표 하나(navigate_to_pose) 또는 경유점 목록(follow_waypoints)이 된다.
-좌표는 배치(layout.py)가 정한다: 경기장 도면 또는 지금 시뮬레이션용 공장 월드.
+좌표는 배치(layout.py, 경기장 도면)가 정한다.
 """
 import math
 import threading
@@ -52,7 +52,7 @@ class Fleet:
         로봇 연결을 만든다 (시험에서는 ROS 없이 가짜 연결을 넘긴다).
         """
         self.layout = layout
-        self.timeouts = {'goto': 180.0, 'park': 180.0, 'unpark': 180.0, 'lap': 300.0,
+        self.timeouts = {'goto': 180.0, 'park': 180.0, 'unpark': 180.0,
                          'drive': 300.0, 'lane_change': 120.0, 'fuel': 180.0,
                          'reference': 600.0}
         self.timeouts.update({k: float(v) for k, v in (config.get('timeout_s') or {}).items()})
@@ -178,10 +178,6 @@ class Fleet:
     def lane_change(self, name, to_track):
         poses = self.layout.lane_change_path(to_track, self._pose(name))
         return self._start(name, 'lane_change', f'{to_track}번 트랙으로', poses, mode='path')
-
-    def lap(self, name, route):
-        routes = getattr(self.layout, 'routes', {})
-        return self._start(name, 'lap', route, self._pick(routes, route, '경로'))
 
     # ---- 주유 ----------------------------------------------------------
     def fuel(self, name, step):

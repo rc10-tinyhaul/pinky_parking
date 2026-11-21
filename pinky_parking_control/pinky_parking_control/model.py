@@ -19,7 +19,7 @@ CANCELED = 'canceled'
 FINISHED = (SUCCEEDED, FAILED, CANCELED)
 
 # 행동 단위 (Nav2 목표가 되는 것)
-ACTIONS = ('goto', 'park', 'unpark', 'lap', 'drive', 'lane_change', 'fuel', 'reference')
+ACTIONS = ('goto', 'park', 'unpark', 'drive', 'lane_change', 'fuel', 'reference')
 
 
 class TaskBusy(Exception):

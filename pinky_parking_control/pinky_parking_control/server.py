@@ -2,13 +2,13 @@
 관제 서버: 행동 단위 HTTP API, 실시간 상태 WebSocket, 관제센터 대시보드.
 
   ros2 run pinky_parking_control control_server
-  ros2 run pinky_parking_control control_server --layout arena --port 8080
+  ros2 run pinky_parking_control control_server --port 8080
 
 API (자세한 형식은 http://<host>:8080/docs):
   기본 이동   POST /api/robots/{name}/goto {x, y, yaw}  /teleop {linear, angular}
               /cancel  /stop   POST /api/stop
   주차·출차   POST /api/robots/{name}/park {slot}  /unpark {slot}  /park/precise (준비 중)
-  주행        POST /api/robots/{name}/drive {track}  /lane_change {to}  /lap {route}
+  주행        POST /api/robots/{name}/drive {track}  /lane_change {to}
               /gap (준비 중)
   주유        POST /api/robots/{name}/fuel {step: wait | enter | leave}
   차종        PUT  /api/robots/{name}/vehicle {type: T00 | T10 | T15}
@@ -250,10 +250,6 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
     def lane_change(name: str, body: dict = Body(..., examples=[{'to': 2}])):
         return task_reply(_call(fleet.lane_change, name, body.get('to')))
 
-    @commands.post('/api/robots/{name}/lap', tags=['주행'])
-    def lap(name: str, body: dict = Body(..., examples=[{'route': 'lap'}])):
-        return task_reply(_call(fleet.lap, name, str(body.get('route', 'lap'))))
-
     @app.get('/api/robots/{name}/reference', tags=['주행'])
     def reference_list(name: str):
         """기준 경로(가제보 등에서 기록한 주행 좌표)의 구간 목록."""
@@ -344,10 +340,7 @@ def main():
     import rclpy
     from pinky_parking_bringup.robots import load_robots
     from pinky_parking_control.fleet import Fleet
-    from pinky_parking_control.layout import ARENA
     from pinky_parking_control.layout import ArenaLayout
-    from pinky_parking_control.layout import choose_layout
-    from pinky_parking_control.layout import FactoryLayout
     from pinky_parking_control.mapdata import load_map
     from pinky_parking_control.robot_link import RobotLink
     from pinky_parking_control.scenario import ScenarioRunner
@@ -360,15 +353,8 @@ def main():
     parser.add_argument('--scenario', default=str(share / 'config/scenario.yaml'))
     parser.add_argument('--robots', default=str(_share('pinky_parking_bringup')
                                                 / 'config/robots.yaml'))
-    parser.add_argument('--slots', default=str(_share('pinky_parking_docking')
-                                               / 'config/slots.yaml'))
-    parser.add_argument('--routes', default=str(_share('pinky_parking_driving')
-                                                / 'config/route.yaml'))
-    parser.add_argument('--map', default=str(_share('pinky_parking_navigation')
-                                             / 'maps/arena.yaml'))
-    parser.add_argument('--layout', choices=['auto', 'arena', 'factory'])
     parser.add_argument('--room-map', default='',
-                        help='경기장 배치에서 겹쳐 보여 줄 고정벽 지도 YAML (snapshot_map 이 만든 것)')
+                        help='경기장 화면에 겹쳐 보여 줄 고정벽 지도 YAML (snapshot_map 이 만든 것)')
     parser.add_argument('--log-dir', default=os.environ.get('PINKY_LOG_DIR', ''),
                         help='작업마다 궤적 파일을 남길 폴더 (기본: 환경변수 PINKY_LOG_DIR, 없으면 ~/pinky_logs)')
     parser.add_argument('--camera', action='append', default=[], metavar='이름=주소',
@@ -396,20 +382,12 @@ def main():
         robots = [r for r in robots if r['name'] in only]
         if not robots:
             parser.error(f'--only 에 맞는 로봇이 없습니다: {args.only}')
-    arena = _yaml(args.arena)
-    kind = choose_layout(args.layout or config.get('layout', 'auto'), world_name)
-    if kind == ARENA:
-        room = Path(args.room_map).expanduser() if args.room_map else None
-        layout = ArenaLayout(arena)
-        map_data = load_map(room) if room and room.is_file() else None
-        scenario_data = _yaml(args.scenario)
-    else:
-        layout = FactoryLayout(_yaml(args.slots)['slots'], _yaml(args.routes)['routes'],
-                               config.get('unpark_exits'), arena['vehicles'])
-        map_data = load_map(args.map) if Path(args.map).is_file() else None
-        scenario_data = None
+    room = Path(args.room_map).expanduser() if args.room_map else None
+    layout = ArenaLayout(_yaml(args.arena))
+    map_data = load_map(room) if room and room.is_file() else None
+    scenario_data = _yaml(args.scenario)
 
-    callsigns = (scenario_data or _yaml(args.scenario)).get('callsigns')
+    callsigns = scenario_data.get('callsigns')
     # 팀 비밀번호는 저장소에 남지 않게 환경변수로만 받는다 (compose.yaml 이 호스트 값을 넘긴다)
     password = os.environ.get(PASSWORD_ENV, '')
     fleet = Fleet(robots, layout, config, RobotLink, callsigns)
