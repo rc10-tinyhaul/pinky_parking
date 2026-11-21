@@ -45,7 +45,11 @@ def setup(context):
             'name': robot['name'], 'domain_id': robot['domain_id'],
             'camera': arg('camera'), **pose}))
         nav_actions.append(include('pinky_parking_navigation', 'robot_nav.launch.py', {
-            'domain_id': robot['domain_id'], 'map': arg('map'), **pose}))
+            'domain_id': robot['domain_id'], 'map': arg('map'),
+            'localization': arg('localization'), 'max_speed': arg('max_speed'),
+            'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
+            'lookahead': arg('lookahead'), 'fine_amcl': arg('fine_amcl'),
+            'pose_from_tf': arg('fine_amcl'), **pose}))
     if arg('nav').lower() == 'true':
         actions.append(TimerAction(period=float(arg('nav_delay')), actions=nav_actions))
     return actions
@@ -64,6 +68,17 @@ def generate_launch_description():
         DeclareLaunchArgument('headless', default_value='false', description='화면 없는 환경용'),
         DeclareLaunchArgument('camera', default_value='true', description='카메라 영상 브리지'),
         DeclareLaunchArgument('nav', default_value='true', description='Nav2 실행'),
+        DeclareLaunchArgument(
+            'localization', default_value='amcl',
+            description='위치 추정: amcl | odom (시작 위치 + 바퀴 기록, 실물 경기장 없을 때 시험용)'),
         DeclareLaunchArgument('nav_delay', default_value='15.0', description='Nav2 시작 전 대기 [s]'),
+        DeclareLaunchArgument('max_speed', default_value='', description='직진 속도 상한 [m/s]'),
+        DeclareLaunchArgument(
+            'goal_tolerance', default_value='', description='도착 허용 거리 [m] (공식 0.25)'),
+        DeclareLaunchArgument('max_turn', default_value='', description='회전 속도 상한 [rad/s]'),
+        DeclareLaunchArgument('lookahead', default_value='', description='경로 추종 주시 거리 [m]'),
+        DeclareLaunchArgument(
+            'fine_amcl', default_value='false',
+            description='AMCL 을 작은 경기장에 맞게 (실물과 같은 설정으로 시험할 때 true)'),
         OpaqueFunction(function=setup),
     ])

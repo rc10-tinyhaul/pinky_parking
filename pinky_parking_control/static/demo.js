@@ -25,7 +25,7 @@ window.PinkyDemo = (() => {
   };
   const CALLSIGNS = { A: 'pinky1', B: 'pinky2' };
   const ARENA = {
-    kind: 'arena', name: '경기장', board: { width: 2.0, height: 2.0 }, straight: 0.6, lane_width: 0.19, tape_width: 0.02,
+    kind: 'arena', name: '경기장', board: { x: -1.2, y: -1.0, width: 2.0, height: 2.0 }, straight: 0.6, lane_width: 0.19, tape_width: 0.02,
     tracks: [{ id: 1, name: '1번 트랙 (안쪽)', radius: 0.405, vehicles: ['T00'] }, { id: 2, name: '2번 트랙 (바깥쪽)', radius: 0.595, vehicles: ['T10', 'T15'] }],
     slots: {
       slot_10: { x: 0, y: -0.15, yaw: PI2, width: 0.19, length: 0.3, marker: 10 },
@@ -55,7 +55,7 @@ window.PinkyDemo = (() => {
   let nextId = 7;
 
   const start = LAYOUT.kind === 'arena'
-    ? { pinky1: { x: 0, y: -0.15, yaw: PI2 }, pinky2: { x: 0, y: 0.15, yaw: PI2 } }
+    ? { pinky1: { x: 0, y: 0.15, yaw: PI2 }, pinky2: { x: 0, y: -0.15, yaw: PI2 } }
     : { pinky1: { x: 0, y: 0, yaw: 0 }, pinky2: { x: 0.5, y: 1.0, yaw: 3.14159 } };
   const robots = {
     pinky1: { name: 'pinky1', domain_id: 11, callsign: 'A', vehicle: 'T00', pose: { ...start.pinky1 }, v: 0, w: 0, task: null, teleop: 0 },
@@ -64,8 +64,8 @@ window.PinkyDemo = (() => {
 
   const t0 = now();
   const log = [
-    { id: 6, robot: 'pinky2', action: 'park', target: 'slot_11', state: 'succeeded', detail: '', started: t0 - 214.6, finished: t0 - 196.2 },
-    { id: 5, robot: 'pinky1', action: 'park', target: 'slot_10', state: 'succeeded', detail: '', started: t0 - 262.0, finished: t0 - 244.3 },
+    { id: 6, robot: 'pinky2', action: 'park', target: 'slot_10', state: 'succeeded', detail: '', started: t0 - 214.6, finished: t0 - 196.2 },
+    { id: 5, robot: 'pinky1', action: 'park', target: 'slot_11', state: 'succeeded', detail: '', started: t0 - 262.0, finished: t0 - 244.3 },
     { id: 4, robot: 'pinky2', action: 'goto', target: '(-0.60, 0.30)', state: 'canceled', detail: '정지 명령', started: t0 - 398.1, finished: t0 - 391.7 },
   ].map((t) => ({ ...t, elapsed_s: +(t.finished - t.started).toFixed(1), poses: [], waypoint_index: 0, waypoint_total: 1, distance_remaining: null, goal: null }));
 
@@ -164,11 +164,11 @@ window.PinkyDemo = (() => {
 
   // ---- 시연 시나리오 (scenario.yaml 과 같은 단계) --------------------------------
   const STEPS = [
-    { title: '주차 구역에서 시작', detail: 'A(트레일러 없음)는 10번, B(10 cm)는 11번 칸에 선다', actions: [
+    { title: '주차 구역에서 시작', detail: 'A(트레일러 없음)는 11번, B(10 cm)는 10번 칸에 선다', actions: [
       { robot: 'A', do: 'vehicle', type: 'T00' }, { robot: 'B', do: 'vehicle', type: 'T10' },
-      { robot: 'A', do: 'park', slot: 'slot_10' }, { robot: 'B', do: 'park', slot: 'slot_11' }] },
+      { robot: 'A', do: 'park', slot: 'slot_11' }, { robot: 'B', do: 'park', slot: 'slot_10' }] },
     { title: '1바퀴 직진', detail: 'A는 1번 트랙, B는 2번 트랙을 한 바퀴', actions: [
-      { robot: 'A', do: 'unpark', slot: 'slot_10' }, { robot: 'B', do: 'unpark', slot: 'slot_11' },
+      { robot: 'A', do: 'unpark', slot: 'slot_11' }, { robot: 'B', do: 'unpark', slot: 'slot_10' },
       { robot: 'A', do: 'drive', track: 1 }, { robot: 'B', do: 'lane_change', to: 2 }, { robot: 'B', do: 'drive', track: 2 }] },
     { title: '2번 트랙 간격 조절 1바퀴', detail: 'A와 B가 같은 2번 트랙에서 앞뒤 간격을 지키며 한 바퀴', pending: '앞뒤 간격 조절 (#12)' },
     { title: 'A 차선 변경 후 주유구역으로', detail: 'A가 2번 트랙으로 옮겨 대기선(30)에 섰다가 주유구역(20)에 들어간다', actions: [
@@ -176,10 +176,10 @@ window.PinkyDemo = (() => {
     { title: 'B 대기선에서 차례 기다리기', detail: 'A가 주유구역 안에 있는 동안 B는 대기선(30) 앞에 선다', actions: [{ robot: 'B', do: 'fuel', step: 'wait' }] },
     { title: 'A 트레일러 바꾸기', detail: 'A 주유가 끝나면 사람이 A에 15 cm 트레일러를 단다', actions: [
       { robot: 'A', do: 'confirm', text: 'A에 15 cm 트레일러를 달았나요?' }, { robot: 'A', do: 'vehicle', type: 'T15' }, { robot: 'A', do: 'fuel', step: 'leave' }] },
-    { title: 'B 주유 후 제자리 주차', detail: 'B가 주유구역에 들어갔다 나와 11번 칸으로', actions: [
-      { robot: 'B', do: 'fuel', step: 'enter' }, { robot: 'B', do: 'fuel', step: 'leave' }, { robot: 'B', do: 'park', slot: 'slot_11' }] },
+    { title: 'B 주유 후 제자리 주차', detail: 'B가 주유구역에 들어갔다 나와 10번 칸으로', actions: [
+      { robot: 'B', do: 'fuel', step: 'enter' }, { robot: 'B', do: 'fuel', step: 'leave' }, { robot: 'B', do: 'park', slot: 'slot_10' }] },
     { title: 'A(15 cm) 2번 트랙 1바퀴', actions: [{ robot: 'A', do: 'drive', track: 2 }] },
-    { title: 'A 주차하고 종료', detail: 'A(15 cm)는 10번, B(10 cm)는 11번 칸에서 끝', actions: [{ robot: 'A', do: 'park', slot: 'slot_10' }] },
+    { title: 'A 주차하고 종료', detail: 'A(15 cm)는 11번, B(10 cm)는 10번 칸에서 끝', actions: [{ robot: 'A', do: 'park', slot: 'slot_11' }] },
   ];
   const WORDS = { park: '주차', unpark: '출차', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유', vehicle: '차종', confirm: '사람 확인' };
   const describe = (a) => {

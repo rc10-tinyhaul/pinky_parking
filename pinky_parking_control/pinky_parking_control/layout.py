@@ -12,6 +12,11 @@ from pinky_parking_control.model import parse_pose
 ARENA, FACTORY = 'arena', 'factory'
 FUEL_STEPS = ('wait', 'enter', 'leave')
 WAYPOINTS_PER_LAP = 12   # 한 바퀴를 12 점으로 (1번 트랙 약 0.31 m 간격)
+PATH_STEP = 0.03         # 연속 경로의 점 간격 [m]
+LAP_END_GAP = 0.15       # 한 바퀴 경로를 출발점보다 이만큼 앞에서 끝낸다 (끝 = 시작이면 출발하자마자 도착으로 친다)
+LANE_CHANGE_LENGTH = 0.6  # 차선을 옮기는 동안 나아가는 거리 [m]
+PARK_ENTRY = 0.28        # 주차 칸 가운데에서 이만큼 뒤에 먼저 서서 방향을 맞춘 뒤 똑바로 들어간다 [m]
+PARKED_NEAR = (0.04, 0.10)   # 이미 칸 가운데에 이만큼(거리 m, 방향 rad) 가까우면 다시 들어가지 않는다
 
 
 class NotInLayout(Exception):
@@ -93,6 +98,93 @@ class ArenaLayout:
         fraction = current.nearest(pose['x'], pose['y'])[0] / current.length
         return [target.pose((fraction + ahead) * target.length) for ahead in (0.06, 0.12)]
 
+    @staticmethod
+    def _with_heading(points, last_yaw):
+        """(x, y) 목록 → 진행 방향을 yaw 로 붙인 위치 목록."""
+        out = []
+        for i, (x, y) in enumerate(points):
+            if i + 1 < len(points):
+                nx, ny = points[i + 1]
+                yaw = math.atan2(ny - y, nx - x)
+            else:
+                yaw = last_yaw
+            out.append({'x': round(x, 4), 'y': round(y, 4), 'yaw': round(yaw, 4)})
+        return out
+
+    @staticmethod
+    def _approach(pose, first):
+        """로봇이 경로 시작점에서 떨어져 있으면 그 사이를 직선으로 잇는 점들."""
+        gap = math.hypot(first[0] - pose['x'], first[1] - pose['y'])
+        steps = int(gap / PATH_STEP)
+        return [(pose['x'] + (first[0] - pose['x']) * i / steps,
+                 pose['y'] + (first[1] - pose['y']) * i / steps) for i in range(steps)]
+
+    def drive_path(self, track_id, pose, laps=1):
+        """
+        트랙 중심선을 따라 laps 바퀴 도는 촘촘한 경로 (Nav2 FollowPath 용).
+
+        경유점마다 멈추지 않고 곡선을 이어서 달린다. 지금 위치에서 가장 가까운 지점부터 반시계.
+        """
+        track = self.track(track_id)
+        s0 = track.nearest(pose['x'], pose['y'])[0] if pose else 0.0
+        length = track.length * max(1, int(laps)) - LAP_END_GAP
+        count = int(length / PATH_STEP)
+        points = [track.point(s0 + length * i / count)[:2] for i in range(count + 1)]
+        if pose:
+            points = self._approach(pose, points[0]) + points
+        return self._with_heading(points, track.point(s0 + length)[2])
+
+    def lane_change_path(self, to_track, pose):
+        """지금 트랙에서 옆 트랙으로 비스듬히 옮겨 타는 매끄러운 경로 (S 자)."""
+        target = self.track(to_track)
+        if not pose:
+            raise ValueError('로봇 위치를 모릅니다 (AMCL 위치가 아직 없습니다)')
+        current = self.tracks[self.nearest_track(pose)]
+        fraction = current.nearest(pose['x'], pose['y'])[0] / current.length
+        ahead = LANE_CHANGE_LENGTH / target.length
+        count = int(LANE_CHANGE_LENGTH / PATH_STEP)
+        points = []
+        for i in range(count + 1):
+            u = i / count
+            w = u * u * (3 - 2 * u)                       # 0 → 1 로 부드럽게 (양 끝 기울기 0)
+            ax, ay, _ = current.point((fraction + ahead * u) * current.length)
+            bx, by, _ = target.point((fraction + ahead * u) * target.length)
+            points.append((ax + (bx - ax) * w, ay + (by - ay) * w))
+        points = self._approach(pose, points[0]) + points
+        return self._with_heading(points, target.point((fraction + ahead) * target.length)[2])
+
+    def park_poses(self, slot_pose, pose=None):
+        """
+        주차 칸에 들어가는 경유점: [칸 끝 진입 자리, 칸 가운데].
+
+        칸 폭 190 mm 에 차 폭 130 mm 라 옆에서 비스듬히 들어가면 선을 밟는다. 칸의 긴 방향 양 끝 중
+        다른 칸에서 먼 쪽(열린 쪽)에 먼저 서서 방향을 맞추고 똑바로 들어간다. 10·11번 칸처럼 칸이
+        이어져 있으면 옆 칸을 지나 들어가지 않는다 (거기 다른 차가 서 있을 수 있다). 후진하지 않으므로
+        들어간 방향 그대로 선다: 11번은 위에서 들어와 아래를 보고, 10번은 아래에서 들어와 위를 본다.
+        이미 칸 안에 바로(어느 쪽을 보든) 서 있으면 그대로 둔다.
+        """
+        yaw = slot_pose['yaw']
+        ends = []
+        for sign in (-1.0, 1.0):                       # 칸 뒤쪽 끝, 앞쪽 끝
+            entry = {'x': slot_pose['x'] + sign * PARK_ENTRY * math.cos(yaw),
+                     'y': slot_pose['y'] + sign * PARK_ENTRY * math.sin(yaw)}
+            others = [math.hypot(entry['x'] - o['x'], entry['y'] - o['y'])
+                      for o in self.slots.values()
+                      if (o['x'], o['y']) != (slot_pose['x'], slot_pose['y'])]
+            heading = normalize_angle(yaw if sign < 0 else yaw + math.pi)   # 진입 자리 → 칸 가운데
+            ends.append((min(others, default=float('inf')), sign, entry, heading))
+        _, _, entry, heading = max(ends, key=lambda e: (e[0], -e[1]))    # 같으면 뒤쪽 끝
+        if pose is not None:
+            gap = math.hypot(pose['x'] - slot_pose['x'], pose['y'] - slot_pose['y'])
+            turn = min(abs(normalize_angle(pose['yaw'] - yaw)),
+                       abs(normalize_angle(pose['yaw'] - yaw - math.pi)))
+            if gap <= PARKED_NEAR[0] and turn <= PARKED_NEAR[1]:
+                return [{**slot_pose, 'yaw': round(normalize_angle(
+                    yaw if abs(normalize_angle(pose['yaw'] - yaw)) <= math.pi / 2
+                    else yaw + math.pi), 4)}]
+        return [{'x': round(entry['x'], 4), 'y': round(entry['y'], 4), 'yaw': round(heading, 4)},
+                {'x': slot_pose['x'], 'y': slot_pose['y'], 'yaw': round(heading, 4)}]
+
     def fuel_poses(self, step):
         if step not in FUEL_STEPS:
             raise ValueError(f'주유 단계는 {", ".join(FUEL_STEPS)} 중 하나입니다: {step}')
@@ -120,7 +212,7 @@ class FactoryLayout:
     def drive(self, track_id, pose, laps=1):
         raise NotInLayout('트랙 주행은 경기장 배치에서만 됩니다 (지금은 공장 월드)')
 
-    lane_change = drive
+    lane_change = drive_path = lane_change_path = drive
 
     def fuel_poses(self, step):
         raise NotInLayout('주유구역은 경기장 배치에서만 있습니다 (지금은 공장 월드)')

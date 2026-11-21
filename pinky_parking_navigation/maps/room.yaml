@@ -1,0 +1,8 @@
+# snapshot_map: 로봇 (-0.012, 0.144, 1.616) 에서 스캔 81 번으로 찍은 고정벽 (좌표 = 경기장 도면 좌표)
+image: room.pgm
+mode: trinary
+resolution: 0.03
+origin: [-5.190, -4.290, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

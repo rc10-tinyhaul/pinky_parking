@@ -1,0 +1,14 @@
+# 실물 로봇용: compose.yaml 에 덧붙인다 (run.sh 가 PINKY_NETWORK=host 일 때 붙임)
+#   PINKY_NETWORK=host ./run.sh
+#
+# 컨테이너가 호스트 네트워크를 그대로 써서, 같은 와이파이의 실물 로봇과 ROS 2 로 통신한다.
+# 이 모드에서는 시뮬레이션을 띄우지 않는다. 시뮬레이션과 실물이 같은 ROS_DOMAIN_ID(11, 12)에서 섞인다.
+services:
+  sim:
+    network_mode: host
+    ipc: host          # ROS 2(Fast DDS)의 공유 메모리 통신을 호스트의 ROS 프로세스와도 맞춘다
+    ports: !reset []   # 호스트 네트워크에서는 포트 연결이 필요 없고 함께 쓸 수도 없다
+    environment:
+      # 공유기가 멀티캐스트를 막아 로봇이 안 보일 때: 호스트에서 로봇 IP 를 적어 넘긴다
+      #   ROS_STATIC_PEERS=192.168.204.50 PINKY_NETWORK=host ./run.sh
+      - ROS_STATIC_PEERS=${ROS_STATIC_PEERS:-}

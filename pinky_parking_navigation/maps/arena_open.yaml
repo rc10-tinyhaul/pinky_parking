@@ -1,0 +1,8 @@
+# scripts/make_arena_sim.py 가 만든 실물용 벽 없는 경기장 바닥 (도면 좌표, odom 위치 추정과 함께).
+image: arena_open.pgm
+mode: trinary
+resolution: 0.02
+origin: [-1.790, -1.590, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

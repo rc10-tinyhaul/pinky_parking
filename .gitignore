@@ -6,3 +6,4 @@ log/
 .run/
 CLAUDE.local.md
 .env
+logs/
