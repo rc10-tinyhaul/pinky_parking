@@ -171,6 +171,11 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
             return _call(fleet.set_pose, name, None, str(body['slot']))
         return _call(fleet.set_pose, name, body)
 
+    @commands.post('/api/robots/{name}/markers/register', tags=['기본 이동'])
+    def markers_register(name: str, body: dict = Body(..., examples=[{'slot': 'slot_11'}])):
+        """지금 카메라에 보이는 마커의 위치를 등록한다: {slot} 이면 그 칸 기준, 비우면 지금 위치 기준."""
+        return _call(fleet.register_markers, name, str(body.get('slot') or ''))
+
     @app.websocket('/api/ws')
     async def stream(socket: WebSocket):
         await socket.accept()
@@ -232,6 +237,16 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
     @commands.post('/api/robots/{name}/lap', tags=['주행'])
     def lap(name: str, body: dict = Body(..., examples=[{'route': 'lap'}])):
         return task_reply(_call(fleet.lap, name, str(body.get('route', 'lap'))))
+
+    @app.get('/api/robots/{name}/reference', tags=['주행'])
+    def reference_list(name: str):
+        """기준 경로(가제보 등에서 기록한 주행 좌표)의 구간 목록."""
+        return _call(fleet.reference_view, name)
+
+    @commands.post('/api/robots/{name}/reference', tags=['주행'])
+    def reference_follow(name: str, body: dict = Body(..., examples=[{'segment': 0}])):
+        """기준 경로의 구간 하나를 따라간다. 로봇이 구간 시작점 근처에 있어야 한다."""
+        return task_reply(_call(fleet.follow_reference, name, body.get('segment')))
 
     @commands.post('/api/robots/{name}/gap', tags=['주행'])
     def gap(name: str):
@@ -319,10 +334,14 @@ def main():
     parser.add_argument('--map', default=str(_share('pinky_parking_navigation')
                                              / 'maps/factory.yaml'))
     parser.add_argument('--layout', choices=['auto', 'arena', 'factory'])
+    parser.add_argument('--room-map', default='',
+                        help='경기장 배치에서 겹쳐 보여 줄 고정벽 지도 YAML (snapshot_map 이 만든 것)')
     parser.add_argument('--log-dir', default=os.environ.get('PINKY_LOG_DIR', ''),
                         help='작업마다 궤적 파일을 남길 폴더 (기본: 환경변수 PINKY_LOG_DIR, 없으면 ~/pinky_logs)')
     parser.add_argument('--camera', action='append', default=[], metavar='이름=주소',
                         help='로봇 카메라 영상 주소 (예: pinky1=http://192.168.0.5:8090/stream). 여러 번')
+    parser.add_argument('--reference', action='append', default=[], metavar='이름=CSV',
+                        help='기준 경로 CSV (예: pinky1=/data/coords_robot_a.csv). 여러 번')
     parser.add_argument('--only', default='',
                         help='일부 로봇만 연결: 이름을 쉼표로 (예: pinky1). 실물을 한 대만 시험할 때')
     parser.add_argument('--host')
@@ -335,6 +354,9 @@ def main():
     cameras = dict(config.get('cameras') or {})
     cameras.update(item.split('=', 1) for item in args.camera if '=' in item)
     config['cameras'] = cameras
+    references = dict(config.get('references') or {})
+    references.update(item.split('=', 1) for item in args.reference if '=' in item)
+    config['references'] = references
     world_name, robots = load_robots(args.robots)
     only = [n for n in args.only.split(',') if n]
     if only:
@@ -344,7 +366,9 @@ def main():
     arena = _yaml(args.arena)
     kind = choose_layout(args.layout or config.get('layout', 'auto'), world_name)
     if kind == ARENA:
-        layout, map_data = ArenaLayout(arena), None
+        room = Path(args.room_map).expanduser() if args.room_map else None
+        layout = ArenaLayout(arena)
+        map_data = load_map(room) if room and room.is_file() else None
         scenario_data = _yaml(args.scenario)
     else:
         layout = FactoryLayout(_yaml(args.slots)['slots'], _yaml(args.routes)['routes'],

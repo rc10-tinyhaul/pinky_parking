@@ -11,8 +11,8 @@
   const $ = (sel, el = document) => el.querySelector(sel);
   const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
   const G = window.ArenaGeo;
-  const ACTION = { goto: '이동', park: '주차', unpark: '출차', lap: '경로 주행', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유' };
-  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중' };
+  const ACTION = { goto: '이동', park: '주차', unpark: '출차', lap: '경로 주행', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유', reference: '기준 경로' };
+  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중', reference: '따라가는 중' };
   const RESULT = { running: '진행 중', succeeded: '완료', failed: '실패', canceled: '취소됨' };
   const STEP_MARK = { running: '▸', done: '✓', skipped: '–', failed: '✕', stopped: '■' };
   const TRAIL_POINTS = 1200;   // 자취를 길게 남긴다 (계획 경로와 겹쳐 보며 보정). '자취 지우기'로 비운다
@@ -153,11 +153,25 @@
       state.trails[r.name] = [];
       return order(r, 'set_pose', { slot }, `위치를 ${slot} 로 맞춤`);
     },
+    marker_register: (r) => {
+      const slot = $('#slot-pick').value;
+      const ids = r.marker && r.marker.visible ? r.marker.visible.join(', ') : '';
+      const at = state.layout.slots[slot];
+      // 로봇이 고른 칸 안에 있으면 그 칸 가운데를 기준으로(가장 정확), 아니면 지금 믿는 위치를 기준으로 등록한다
+      const inSlot = at && r.pose && Math.hypot(r.pose.x - at.x, r.pose.y - at.y) < 0.08;
+      const how = inSlot ? `${sign(r)} 가 ${slot} 가운데에 앞을 보고 서 있다고 보고` : `${sign(r)} 의 지금 위치 (${fixed(r.pose.x)}, ${fixed(r.pose.y)}) 를 기준으로`;
+      if (!window.confirm(`${how}, 지금 보이는 마커(${ids})의 위치를 등록합니다.`)) return null;
+      return order(r, 'markers/register', inSlot ? { slot } : {}, `마커 ${ids} 등록`);
+    },
+    reference: (r) => {
+      const pick = $('#ref-pick');
+      return order(r, 'reference', { segment: Number(pick.value) }, `기준 경로 ${pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : ''}`);
+    },
     cancel: (r) => order(r, 'cancel', null, '작업 취소'),
     stop: (r) => order(r, 'stop', null, '정지'),
   };
   const ARENA_ONLY = new Set(['drive1', 'drive2', 'lane', 'fuel_wait', 'fuel_enter', 'fuel_leave']);
-  const KEYS = { q: 'drive1', e: 'drive2', c: 'lane', p: 'park', u: 'unpark', f: 'fuel_wait', g: 'fuel_enter', h: 'fuel_leave', x: 'cancel' };
+  const KEYS = { q: 'drive1', e: 'drive2', c: 'lane', p: 'park', u: 'unpark', f: 'fuel_wait', g: 'fuel_enter', h: 'fuel_leave', x: 'cancel', r: 'reference' };
 
   function why(r, cmd) {
     if (cmd === 'stop') return state.connected ? '' : '서버와 연결이 끊겼습니다';
@@ -168,9 +182,15 @@
     if (ARENA_ONLY.has(cmd) && !isArena()) return '경기장 배치에서만 됩니다';
     if (state.drive.on) return '직접 운전 중입니다 (M으로 끄기)';
     if (cmd === 'set_pose') return busy(r) ? '작업 중입니다. 먼저 취소하세요 (X)' : '';
+    if (cmd === 'marker_register') {
+      if (busy(r)) return '작업 중입니다. 먼저 취소하세요 (X)';
+      if (!r.marker) return '마커 위치 보정이 꺼져 있습니다';
+      return r.marker.visible && r.marker.visible.length ? '' : '지금 카메라에 보이는 마커가 없습니다';
+    }
     if (!r.nav2_ready) return 'Nav2가 아직 켜지지 않았습니다';
     if (busy(r)) return '작업 중입니다. 먼저 취소하세요 (X)';
-    if ((cmd === 'lane' || cmd === 'drive1' || cmd === 'drive2') && !r.pose) return '로봇 위치를 아직 모릅니다';
+    if ((cmd === 'lane' || cmd === 'drive1' || cmd === 'drive2' || cmd === 'reference') && !r.pose) return '로봇 위치를 아직 모릅니다';
+    if (cmd === 'reference' && !refSegments(r).length) return '이 유닛의 기준 경로가 없습니다';
     return '';
   }
 
@@ -191,9 +211,44 @@
     return t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`;
   }
 
+  // 배터리 표시: 전압과 단계 (실물 로봇만 값이 있다)
+  function batteryView(r) {
+    if (r.battery_v == null) return { text: '배터리 —', level: '' };
+    return { text: `${fixed(r.battery_v, 2)} V`, level: r.battery_v < 7.0 ? 'empty' : r.battery_v < 7.3 ? 'low' : '' };
+  }
+
+  // 가장 급한 알림 (오류 먼저). 없으면 null
+  function topAlert() {
+    let best = null;
+    for (const r of state.robots) {
+      for (const a of r.alerts || []) {
+        if (!best || (a.level === 'error' && best.alert.level !== 'error')) best = { robot: r, alert: a };
+      }
+    }
+    return best;
+  }
+
+  // 위쪽에 항상 보이는 유닛 줄: 호출 부호, 상태, 배터리
+  function renderHudUnits() {
+    const html = state.robots.map((r) => {
+      const st = robotState(r); const b = batteryView(r);
+      return `<li data-tone="${st.tone}" title="${esc(r.name)}"><i style="background:${unitColor(r)}">${esc(sign(r))}</i><b>${esc(st.text)}</b><span class="v" data-level="${b.level}">${esc(b.text)}</span></li>`;
+    }).join('');
+    const el = $('#hud-units');
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
   function renderFinding() {
     const el = $('#finding');
-    if (!state.connected && !demo) { el.textContent = '관제 서버와 연결이 끊겼습니다. 2초마다 다시 연결합니다.'; return; }
+    el.dataset.tone = '';
+    if (!state.connected && !demo) { el.dataset.tone = 'negative'; el.textContent = '관제 서버와 연결이 끊겼습니다. 2초마다 다시 연결합니다.'; return; }
+    const top = topAlert();
+    if (top && top.alert.level === 'error') {       // 오류는 무엇보다 먼저 보여 준다
+      el.dataset.tone = 'negative';
+      el.innerHTML = `<b>${esc(sign(top.robot))} 오류</b> · ${esc(top.alert.text)}`;
+      el.title = el.textContent;
+      return;
+    }
     if (state.scenario && state.scenario.waiting) { el.innerHTML = `<b>시나리오 대기</b> · ${esc(state.scenario.waiting)}`; return; }
     if (!state.robots.length) { el.textContent = '로봇 상태를 받는 중입니다.'; return; }
     const running = state.robots.filter(busy);
@@ -203,6 +258,12 @@
     }
     const driving = state.robots.filter((r) => r.teleop);
     if (driving.length) { el.innerHTML = `<b>${esc(sign(driving[0]))}</b> 직접 운전 중`; return; }
+    if (top && !state.robots.some(busy)) {           // 경고: 작업 중이 아닐 때 보여 준다
+      el.dataset.tone = 'warning';
+      el.innerHTML = `<b>${esc(sign(top.robot))} 주의</b> · ${esc(top.alert.text)}`;
+      el.title = el.textContent;
+      return;
+    }
     const notReady = state.robots.filter((r) => !r.nav2_ready).map(sign);
     if (notReady.length) { el.textContent = `${notReady.join(', ')}의 Nav2가 아직 켜지지 않았습니다.`; return; }
     const failed = state.log.find((t) => t.state === 'failed' && Date.now() / 1000 - t.finished < 600);
@@ -299,12 +360,27 @@
   function robotState(r) {
     if (!state.connected) return { text: '연결 끊김', tone: 'negative' };
     if (r.odom_hz === 0) return { text: '로봇 응답 없음', tone: 'negative' };   // 바퀴 기록이 끊김: 전원, 와이파이
+    if (busy(r) && r.stalled_s >= 4) return { text: '안 움직임', tone: 'negative' };   // 명령은 받았는데 서 있다
     if (!r.nav2_ready) return { text: 'Nav2 대기', tone: 'warning' };
     if (busy(r)) return { text: RUNNING[r.task.action] || '작업 중', tone: 'active' };
     if (r.teleop) return { text: '직접 운전', tone: 'active' };
     if (!r.localized) return { text: '위치 모름', tone: 'warning' };
+    if (r.pose_confirmed === false) return { text: '위치 확인 필요', tone: 'warning' };   // 켠 뒤 맞춘 적이 없다
     if (r.task && r.task.state === 'failed') return { text: '실패', tone: 'negative' };
     return { text: '대기', tone: 'neutral' };
+  }
+
+  // 카메라 마커: 보이는 마커, 등록 여부, 마지막 보정
+  function markerLine(m) {
+    if (!m) return '';
+    if (m.error) return '<span data-bad>마커 <b>카메라 끊김</b></span>';
+    const known = new Set(m.registered || []);
+    const seen = (m.visible || []).map((id) => (known.has(id) ? `${id}` : `${id}(미등록)`)).join(', ');
+    let last = '';
+    if (m.last && m.last.note) last = ` · ${esc(m.last.note)}`;
+    else if (m.last && m.last.id != null) last = ` · ${m.last.id}번으로 ${fixed(m.last.distance * 100, 1)} cm 보정 (${clock(m.last.time)})`;
+    const off = m.offset != null ? ` · 위치 차이 ${fixed(m.offset * 100, 1)} cm` : '';
+    return `<span>마커 <b>${seen ? `${seen} 보임` : '안 보임'}</b>${m.nearest != null ? ` ${fixed(m.nearest)} m` : ''}${off}${last}</span>`;
   }
 
   function renderUnits() {
@@ -318,13 +394,19 @@
       const st = robotState(r);
       q('state').textContent = st.text; q('state').dataset.tone = st.tone;
       const t = r.task;
-      q('task').textContent = busy(r) ? `${t.target} · ${taskRest(t)}` : t ? `마지막: ${t.target} ${ACTION[t.action] || ''} ${RESULT[t.state] || ''}` : '받은 작업 없음';
+      const dev = t && t.deviation ? ` · 경로 오차 평균 ${fixed(t.deviation.mean * 100, 1)} cm, 최대 ${fixed(t.deviation.max * 100, 1)} cm` : '';
+      q('task').textContent = busy(r) ? `${t.target} · ${taskRest(t)}` : t ? `마지막: ${t.target} ${ACTION[t.action] || ''} ${RESULT[t.state] || ''}${dev}` : '받은 작업 없음';
+      q('task').title = q('task').textContent;
       let progress = 0;
       if (busy(r)) {
         if (t.mode !== 'path' && t.waypoint_total > 1) progress = t.waypoint_index / t.waypoint_total;
         else if (t.distance_remaining != null && state.startDist[t.id]) progress = 1 - t.distance_remaining / state.startDist[t.id];
       }
       q('progress').style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+      const bat = batteryView(r);
+      q('battery').textContent = bat.text; q('battery').dataset.level = bat.level;
+      const alertsHtml = (r.alerts || []).map((a) => `<li data-level="${a.level}">${esc(a.text)}</li>`).join('');
+      if (q('alerts').innerHTML !== alertsHtml) q('alerts').innerHTML = alertsHtml;
       q('x').textContent = r.pose ? fixed(r.pose.x) : '—';
       q('y').textContent = r.pose ? fixed(r.pose.y) : '—';
       q('yaw').textContent = r.pose ? `${deg(r.pose.yaw)}°` : '—';
@@ -335,13 +417,12 @@
       }
       q('link').innerHTML = `<span ${r.nav2_ready ? '' : 'data-bad'}>Nav2 <b>${r.nav2_ready ? '켜짐' : '꺼짐'}</b></span>`
         + `<span ${r.localized ? '' : 'data-bad'}>위치 <b>${r.pose_age_s == null ? '없음' : `${fixed(r.pose_age_s, 1)} s 전`}</b></span>`
-        + `<span>${r.teleop ? '직접 운전' : `도메인 <b>${r.domain_id}</b>`}</span>`
-        // 실물 로봇만 배터리 전압을 낸다. 7 V 아래로 내려가면 충전이 안 될 수 있다 (공식 안내)
-        + (r.battery_v == null ? '' : `<span ${r.battery_v < 7.0 ? 'data-bad' : ''}>배터리 <b>${fixed(r.battery_v, 1)} V</b></span>`);
+        + `<span>${r.teleop ? '직접 운전' : `도메인 <b>${r.domain_id}</b>`}</span>`;   // 배터리는 카드 위쪽과 화면 위 유닛 줄에 항상 보인다
       const lane = r.lane ? `<span ${r.lane.offset > 0.06 ? 'data-bad' : ''}>${r.lane.track}번 트랙 <b>${Math.round(r.lane.offset * 1000)} mm</b></span>` : '';
       q('health').innerHTML = lane
         + (r.odom_hz == null ? '' : `<span ${r.odom_hz < 5 ? 'data-bad' : ''}>바퀴 <b>${fixed(r.odom_hz, 0)} Hz</b></span>`)
-        + (r.scan_hz == null ? '' : `<span ${r.scan_hz < 3 ? 'data-bad' : ''}>라이다 <b>${fixed(r.scan_hz, 0)} Hz</b></span>`);
+        + (r.scan_hz == null ? '' : `<span ${r.scan_hz < 3 ? 'data-bad' : ''}>라이다 <b>${fixed(r.scan_hz, 0)} Hz</b></span>`)
+        + markerLine(r.marker);
       drawSprite(q('sprite'), r);
     }
   }
@@ -414,7 +495,7 @@
   }
 
   // ---- SLAM 지도와 라이다 점 (선택한 유닛) --------------------------------------
-  function slamImage(grid) {
+  function slamImage(grid, color = [236, 196, 92, 235]) {
     const off = document.createElement('canvas');
     off.width = grid.width; off.height = grid.height;
     const g = off.getContext('2d');
@@ -423,7 +504,7 @@
       const c = grid.cells[i];
       if (c !== 'o') continue;            // 장애물만 그린다 (빈 곳까지 칠하면 도면이 얼룩져 보인다)
       const k = i * 4;
-      img.data[k] = 236; img.data[k + 1] = 196; img.data[k + 2] = 92; img.data[k + 3] = 235;
+      [img.data[k], img.data[k + 1], img.data[k + 2], img.data[k + 3]] = color;
     }
     g.putImageData(img, 0, 0);
     return off;
@@ -447,7 +528,23 @@
     drawField();
   }
 
+  // 고정벽 지도 (경기장 배치에서 서버가 준 방 지도): 좌표가 곧 도면 좌표라 그대로 겹친다
+  let roomImage = null;
+  function drawRoom() {
+    if (!isArena() || !state.map || !$('#show-room').checked) return;
+    const m = state.map;
+    if (!roomImage) roomImage = slamImage(m, [150, 190, 255, 230]);
+    const k = m.resolution * view.s;
+    const [px, py] = toPx(0, 0);
+    ctx.save();
+    ctx.translate(px, py); ctx.scale(k, k);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(roomImage, m.origin.x / m.resolution, -(m.origin.y / m.resolution + m.height));
+    ctx.restore();
+  }
+
   function drawSensors() {
+    drawRoom();
     const r = sel();
     if (!r) return;
     const m = state.slam[r.name];
@@ -466,6 +563,27 @@
       ctx.fillStyle = css('--select');
       for (const [x, y] of pts) { const [sx, sy] = toPx(x, y); ctx.fillRect(sx - 1.2, sy - 1.2, 2.4, 2.4); }
     }
+  }
+
+  // ---- 기준 경로 (가제보 등에서 기록한 주행 좌표) -----------------------------------
+  const refSegments = (r) => (r && state.layout && state.layout.references && state.layout.references[r.name]) || [];
+  const pathLength = (pts) => pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+
+  function drawReference() {
+    const r = sel();
+    if (!$('#show-ref').checked) return;
+    const segs = refSegments(r);
+    const picked = Number($('#ref-pick').value || 0);
+    segs.forEach((pts, i) => {
+      ctx.strokeStyle = css('--reference'); ctx.lineWidth = i === picked ? 2 : 1;
+      ctx.globalAlpha = i === picked ? 0.95 : 0.4;
+      ctx.beginPath();
+      pts.forEach((p, k) => { const [x, y] = toPx(p[0], p[1]); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+      ctx.stroke();
+      const [sx, sy] = toPx(pts[0][0], pts[0][1]);          // 구간 시작점
+      ctx.fillStyle = css('--reference'); ctx.beginPath(); ctx.arc(sx, sy, i === picked ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
   }
 
   // ---- 명령 막대 --------------------------------------------------------------
@@ -491,6 +609,16 @@
       slotPick.dataset.names = slots.join();
       slotPick.textContent = '';
       for (const s of slots) slotPick.add(new Option(s, s));
+    }
+    const segs = refSegments(r);
+    $('#ref-group').hidden = !segs.length;
+    $('#show-ref-label').hidden = !segs.length;
+    const refPick = $('#ref-pick');
+    const refKey = `${r ? r.name : ''}:${segs.length}`;
+    if (refPick.dataset.key !== refKey) {
+      refPick.dataset.key = refKey;
+      refPick.textContent = '';
+      segs.forEach((seg, i) => refPick.add(new Option(`${i + 1}구간 · ${fixed(pathLength(seg), 1)} m`, i)));
     }
     const canDrive = r && state.connected && !locked() && !busy(r);
     const toggle = $('#drive-toggle');
@@ -622,7 +750,7 @@
           <td><span class="who"><i style="background:${r ? unitColor(r) : css('--soft')}">${esc(sign(r) || '?')}</i>${esc(t.robot)}</span></td>
           <td>${ACTION[t.action] || t.action}</td><td>${esc(t.target)}</td>
           <td><span class="result" data-state="${t.state}">${RESULT[t.state] || t.state}</span></td>
-          <td class="dim">${esc(t.detail) || '—'}</td><td class="num">${seconds(t.elapsed_s)}</td></tr>`;
+          <td class="dim">${esc(t.detail) || (t.deviation ? `경로 오차 평균 ${fixed(t.deviation.mean * 100, 1)} cm · 최대 ${fixed(t.deviation.max * 100, 1)} cm · 끝 ${fixed(t.deviation.end * 100, 1)} cm` : '—')}</td><td class="num">${seconds(t.elapsed_s)}</td></tr>`;
       }).join('') : '<tr class="empty"><td colspan="7">아직 끝난 작업이 없습니다.</td></tr>'
     }</tbody>`;
     const ok = rows.filter((t) => t.state === 'succeeded').length;
@@ -842,6 +970,7 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (isArena()) drawArena(); else drawFactory();
     drawSensors();
+    drawReference();
     // 자취와 남은 경로
     for (const r of state.robots) {
       const color = unitColor(r);
@@ -1002,7 +1131,7 @@
   }
 
   function renderAll() {
-    renderLock(); renderFresh(); renderFinding(); renderUnits(); renderCommand();
+    renderLock(); renderFresh(); renderHudUnits(); renderFinding(); renderUnits(); renderCommand();
     renderMission(); renderLegend(); renderLogView(); renderCamera(); renderFieldStatus(); drawField();
   }
 
@@ -1010,7 +1139,10 @@
   $('#stop-all').addEventListener('click', stopAll);
   ['#show-slam', '#show-scan'].forEach((id) => $(id).addEventListener('change', () => { sensorTick(); drawField(); }));
   $('#show-wide').addEventListener('change', () => { layoutField(); drawField(); });
+  $('#show-room').addEventListener('change', drawField);
   $('#clear-trail').addEventListener('click', () => { state.trails = {}; drawField(); });
+  $('#show-ref').addEventListener('change', drawField);
+  $('#ref-pick').addEventListener('change', drawField);
   $('#camera-toggle').addEventListener('click', () => { state.camera.on = !state.camera.on; renderCamera(); });
   $('#tuning-reset').addEventListener('click', async () => {
     if (!state.tuning) return;
@@ -1043,6 +1175,7 @@
       state.map = map;
       state.auth.required = Boolean(auth && auth.required);
       if (layout && layout.teleop) Object.assign(TELEOP, layout.teleop);
+      $('#show-room-label').hidden = !(isArena() && map);
       $('#layout-chip').textContent = isArena() ? '경기장' : '공장 월드';
       $('#field-title').textContent = isArena() ? '경기장' : '공장 월드';
       $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '시뮬레이션 임시 배치 · 경기장 월드(#1) 전까지';

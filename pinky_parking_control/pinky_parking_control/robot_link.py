@@ -6,6 +6,7 @@ Nav2 액션(navigate_to_pose, follow_waypoints)과 /tf 는 도메인을 건너�
 한 프로세스 안에서 도메인 11, 12 … 에 동시에 참여한다.
 """
 from collections import deque
+import json
 import threading
 import time
 
@@ -19,6 +20,7 @@ from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path
+from pinky_parking_control import health
 from pinky_parking_control.mapdata import encode_grid
 from pinky_parking_control.mapdata import scan_points
 from pinky_parking_control.model import CANCELED
@@ -28,6 +30,7 @@ from pinky_parking_control.model import quaternion_to_yaw
 from pinky_parking_control.model import SUCCEEDED
 from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import yaw_to_quaternion
+from rcl_interfaces.msg import Log
 from rcl_interfaces.msg import Parameter
 from rcl_interfaces.msg import ParameterType
 from rcl_interfaces.msg import ParameterValue
@@ -44,6 +47,7 @@ from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32
+from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
 
 # AMCL 은 amcl_pose 를 transient_local 로 낸다: 늦게 붙어도 마지막 위치를 받는다
@@ -97,6 +101,13 @@ class RobotLink:
         self.node.create_subscription(TFMessage, '/tf_static', self._on_tf_static, LATCHED)
         self.node.create_subscription(LaserScan, 'scan', self._on_scan, qos_profile_sensor_data)
         self.initialpose = self.node.create_publisher(PoseWithCovarianceStamped, 'initialpose', 1)
+        # 카메라 마커 위치 보정 (marker_localizer 가 떠 있을 때): 상태를 받고 등록을 시킨다
+        self.marker = None
+        self.node.create_subscription(String, 'marker_status', self._on_marker, LATCHED)
+        self.marker_register = self.node.create_publisher(String, 'marker_register', 1)
+        # Nav2 가 낸 경고·오류 (왜 안 움직이는지 알려 주는 데 쓴다)
+        self.issue = None                         # {'text': 사유, 'raw': 원문, 'time': 받은 시각}
+        self.node.create_subscription(Log, '/rosout', self._on_log, 50)
         self.param_clients = {}                   # (노드, set|get) → 서비스 클라이언트
         self.cmd_vel = self.node.create_publisher(Twist, 'cmd_vel', 10)
         self.clients = {
@@ -153,6 +164,31 @@ class RobotLink:
             self.scan = msg
             self._stamps['scan'].append(time.time())
 
+    def _on_log(self, msg):
+        if msg.level < Log.WARN:
+            return
+        reason = health.reason_from_log(msg.msg)
+        if reason:
+            with self._lock:
+                self.issue = {'text': reason, 'raw': msg.msg[:200], 'time': time.time()}
+
+    def _recent_reason(self, now):
+        with self._lock:
+            issue = self.issue
+        return issue['text'] if issue and now - issue['time'] <= health.REASON_FRESH_S else ''
+
+    def _on_marker(self, msg):
+        try:
+            data = json.loads(msg.data)
+        except ValueError:
+            return
+        with self._lock:
+            self.marker = {**data, 'received': time.time()}
+
+    def register_markers(self, pose):
+        """지금 보이는 마커를 등록시킨다: pose = 로봇의 진짜 위치 (예: 주차 칸 가운데)."""
+        self.marker_register.publish(String(data=json.dumps(pose)))
+
     def _on_battery(self, msg):
         with self._lock:
             self.battery_v = float(msg.data)
@@ -196,7 +232,9 @@ class RobotLink:
         elif status == GoalStatus.STATUS_CANCELED:
             self._finish(task, CANCELED, task.detail or '취소했습니다')
         else:
-            self._finish(task, FAILED, 'Nav2 가 작업을 중단했습니다')
+            code = getattr(response.result, 'error_code', 0) if response else 0
+            self._finish(task, FAILED,
+                         health.failure_detail(code, self._recent_reason(time.time())))
 
     def _finish(self, task, state, detail=''):
         with self._lock:
@@ -381,6 +419,10 @@ class RobotLink:
                 'battery_v': round(self.battery_v, 2) if self.battery_v is not None else None,
                 'odom_hz': self._rate('odom', now), 'scan_hz': self._rate('scan', now),
                 'slam_seq': self.slam_seq, 'camera_url': self.camera_url,
+                'issue': ({'text': self.issue['text'], 'raw': self.issue['raw'],
+                           'age_s': round(now - self.issue['time'], 1)} if self.issue else None),
+                'marker': (dict(self.marker) if self.marker
+                           and now - self.marker['received'] < 3.0 else None),
                 'task': self.task.to_dict(now) if self.task else None,
             }
 

@@ -43,6 +43,7 @@
         </div>
         <p class="finding" id="finding">서버에 연결하는 중입니다.</p>
         <div class="hud-actions">
+          <ul class="hud-units" id="hud-units" aria-label="유닛 상태"></ul>
           <button class="btn btn-quiet" id="lock" type="button" hidden>잠그기</button>
           <p class="fresh" id="fresh"><span class="fresh-dot" aria-hidden="true"></span><span id="fresh-text">연결 중</span></p>
           <button class="btn btn-stop" id="stop-all" type="button">전체 정지 <kbd class="key key-dark">Esc</kbd></button>
@@ -72,8 +73,10 @@
             <ul class="legend" id="legend"></ul>
           </header>
           <div class="field-tools" id="field-tools">
+            <label class="check" id="show-room-label" hidden><input type="checkbox" id="show-room" checked> 고정벽 지도</label>
             <label class="check"><input type="checkbox" id="show-slam" checked> SLAM 지도</label>
             <label class="check"><input type="checkbox" id="show-scan" checked> 라이다</label>
+            <label class="check" id="show-ref-label" hidden><input type="checkbox" id="show-ref" checked> 기준 경로</label>
             <label class="check"><input type="checkbox" id="show-wide"> 넓게 보기</label>
             <button class="btn btn-quiet btn-small" id="clear-trail" type="button">자취 지우기</button>
             <span class="field-status" id="field-status"></span>
@@ -152,12 +155,19 @@
             <button class="cmd" type="button" data-cmd="unpark"><span>출차</span><kbd class="key">U</kbd></button>
             <button class="cmd" type="button" data-cmd="precise" data-pending="park_precise"><span>정밀 주차</span><small>준비 중 #8</small></button>
             <button class="cmd" type="button" data-cmd="set_pose" title="로봇을 손으로 이 칸에 놓은 뒤 누르면, 지금 위치를 이 칸으로 다시 맞춥니다"><span>위치 맞추기</span><small>여기가 이 칸</small></button>
+            <button class="cmd" type="button" data-cmd="marker_register" title="로봇을 이 칸에 놓고 카메라에 마커가 보일 때 누르면, 그 마커의 위치를 등록합니다"><span>마커 등록</span><small>보이는 마커</small></button>
           </div>
           <div class="cmd-group" aria-label="주유">
             <span class="cmd-label">주유</span>
             <button class="cmd" type="button" data-cmd="fuel_wait"><span>대기선 30</span><kbd class="key">F</kbd></button>
             <button class="cmd" type="button" data-cmd="fuel_enter"><span>주유구역 20</span><kbd class="key">G</kbd></button>
             <button class="cmd" type="button" data-cmd="fuel_leave"><span>트랙 복귀</span><kbd class="key">H</kbd></button>
+          </div>
+          <div class="cmd-group" id="ref-group" aria-label="기준 경로" hidden>
+            <span class="cmd-label">기준 경로</span>
+            <label class="sr" for="ref-pick">구간</label>
+            <select class="select" id="ref-pick"></select>
+            <button class="cmd" type="button" data-cmd="reference" title="가제보에서 기록한 주행 경로의 이 구간을 그대로 따라갑니다"><span>따라가기</span><kbd class="key">R</kbd></button>
           </div>
           <div class="cmd-group" aria-label="멈춤">
             <span class="cmd-label">멈춤</span>
@@ -200,7 +210,9 @@
     <div class="unit-row">
       <span class="pill" data-r="state"></span>
       <span class="unit-task" data-r="task">—</span>
+      <span class="battery" data-r="battery" title="배터리 전압">—</span>
     </div>
+    <ul class="alerts" data-r="alerts" role="status"></ul>
     <div class="progress" aria-hidden="true"><i data-r="progress"></i></div>
     <canvas class="sprite" data-r="sprite" width="240" height="64" aria-hidden="true"></canvas>
     <div class="vehicle-pick" role="group" data-r="vehicles"></div>

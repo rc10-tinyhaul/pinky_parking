@@ -23,6 +23,7 @@
   --zone-park: #3fa66b;
   --zone-fuel: #e0525e;
   --zone-wait: #4d84f0;
+  --reference: #c58af9;
   --asphalt: #2a2b32;
   --tape: #d9dbe0;
   --board: #191a1f;
@@ -291,3 +292,26 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .tune input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--select); margin: 2px 0 0; }
 .tune small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
 .tune[data-changed] output { color: var(--select); }
+
+/* ---- 항상 보이는 상태: 위쪽 유닛 줄, 상태 표시줄, 알림 -------------------- */
+.finding[data-tone="negative"] { color: var(--pill-negative-ink); font-weight: 500; }
+.finding[data-tone="negative"] b { color: var(--pill-negative-ink); }
+.finding[data-tone="warning"] { color: var(--pill-warning-ink); }
+.finding[data-tone="warning"] b { color: var(--pill-warning-ink); }
+.hud-units { margin: 0; padding: 0; list-style: none; display: flex; gap: 8px; }
+.hud-units li { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 4px; border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--soft); white-space: nowrap; }
+.hud-units i { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font: 700 11px var(--mono); font-style: normal; color: #0c0c0e; }
+.hud-units b { font-weight: 500; color: var(--text); }
+.hud-units [data-tone="negative"] b, .hud-units [data-tone="negative"] .v { color: var(--pill-negative-ink); }
+.hud-units [data-tone="warning"] b { color: var(--pill-warning-ink); }
+.hud-units .v { font-family: var(--mono); color: var(--soft); }
+.hud-units .v[data-level="low"] { color: var(--pill-warning-ink); }
+.hud-units .v[data-level="empty"] { color: var(--pill-negative-ink); }
+.battery { margin-left: auto; flex: none; font: 500 12px var(--mono); color: var(--soft); white-space: nowrap; }
+.battery[data-level="low"] { color: var(--pill-warning-ink); }
+.battery[data-level="empty"] { color: var(--pill-negative-ink); }
+.alerts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.alerts:empty { display: none; }
+.alerts li { padding: 6px 8px; border-radius: 4px; font-size: 12px; line-height: 1.4; background: var(--pill-warning-bg); color: var(--pill-warning-ink); }
+.alerts li[data-level="error"] { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+@media (max-width: 900px) { .hud-units { order: 4; flex-wrap: wrap; } }

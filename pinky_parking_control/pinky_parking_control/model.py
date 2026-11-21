@@ -19,7 +19,7 @@ CANCELED = 'canceled'
 FINISHED = (SUCCEEDED, FAILED, CANCELED)
 
 # 행동 단위 (Nav2 목표가 되는 것)
-ACTIONS = ('goto', 'park', 'unpark', 'lap', 'drive', 'lane_change', 'fuel')
+ACTIONS = ('goto', 'park', 'unpark', 'lap', 'drive', 'lane_change', 'fuel', 'reference')
 
 
 class TaskBusy(Exception):
@@ -83,6 +83,7 @@ class Task:
     # '' = 위치 하나면 navigate_to_pose, 여럿이면 follow_waypoints. 'path' = follow_path (이어진 경로)
     mode: str = ''
     trail: list = field(default_factory=list)   # 달리며 기록한 실제 위치 [t, x, y, yaw, v, w]
+    deviation: dict = None   # 이어진 경로(path)에서 벗어난 거리 {mean, max, end} [m]. 끝난 뒤 잰다
 
     def __post_init__(self):
         if self.action not in ACTIONS:
@@ -123,6 +124,7 @@ class Task:
             'waypoint_index': self.waypoint_index, 'waypoint_total': len(self.poses),
             'distance_remaining': (None if self.distance_remaining is None
                                    else round(self.distance_remaining, 3)),
+            'deviation': self.deviation,
         }
 
 
@@ -159,6 +161,7 @@ def save_trajectory(task, directory):
         'robot': task.robot, 'action': task.action, 'target': task.target, 'mode': task.mode,
         'state': task.state, 'detail': task.detail, 'started': task.started,
         'elapsed_s': round(task.elapsed(), 2), 'planned': task.poses,
+        'deviation': task.deviation,
         'actual_columns': ['t', 'x', 'y', 'yaw', 'v', 'w'], 'actual': task.trail,
     }
     path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')

@@ -17,13 +17,16 @@ from launch_ros.actions import Node
 
 def setup(context):
     arguments = []
-    for key in ('robots', 'port', 'only', 'log_dir'):
+    for key in ('robots', 'port', 'only', 'log_dir', 'room_map'):
         value = LaunchConfiguration(key).perform(context)
         if value:
             arguments += [f'--{key.replace("_", "-")}', value]
     for item in LaunchConfiguration('cameras').perform(context).split(','):
         if item:
             arguments += ['--camera', item]
+    for item in LaunchConfiguration('references').perform(context).split(','):
+        if item:
+            arguments += ['--reference', item]
     return [Node(package='pinky_parking_control', executable='control_server',
                  output='screen', arguments=arguments)]
 
@@ -41,5 +44,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'cameras', default_value='',
             description='카메라 영상 주소: 이름=주소 를 쉼표로 (예: pinky1=http://192.168.0.5:8090/stream)'),
+        DeclareLaunchArgument(
+            'references', default_value='',
+            description='기준 경로 CSV: 이름=파일 을 쉼표로 (예: pinky1=/data/coords_robot_a.csv)'),
+        DeclareLaunchArgument(
+            'room_map', default_value='',
+            description='경기장 화면에 겹쳐 보여 줄 고정벽 지도 YAML (snapshot_map 이 만든 것)'),
         OpaqueFunction(function=setup),
     ])

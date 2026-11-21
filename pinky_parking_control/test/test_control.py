@@ -1,6 +1,7 @@
 """관제 API 의 순수 로직 시험 (ROS 없이)."""
 import math
 from pathlib import Path
+import time
 
 from pinky_parking_control.fleet import Fleet
 from pinky_parking_control.fleet import UnknownName
@@ -200,7 +201,10 @@ def test_arena_actions_make_waypoints(arena):
     arena.cancel('pinky1')
     assert arena.fuel('pinky1', 'wait').poses[0]['y'] == pytest.approx(0.17)
     arena.cancel('pinky1')
-    assert arena.park('pinky1', 'slot_11').poses[0]['y'] == pytest.approx(0.15)
+    park = arena.park('pinky1', 'slot_11')     # 10번 칸을 지나지 않고 위(열린 쪽)에서 들어온다
+    assert [round(p['y'], 3) for p in park.poses] == [0.43, 0.15]
+    assert all(p['x'] == 0.0 and p['yaw'] == pytest.approx(-math.pi / 2, abs=1e-3)
+               for p in park.poses)
     with pytest.raises(ValueError):
         arena.fuel('pinky2', 'jump')
     with pytest.raises(NotInLayout):
@@ -406,6 +410,53 @@ def test_team_password(factory):
     assert client.post('/api/stop').status_code == 200   # 멈추기는 언제나 된다
 
 
+def test_park_poses_enter_from_open_end_and_skip_when_parked():
+    layout = ArenaLayout(read_yaml('arena.yaml'))
+    s10, s11 = layout.slots['slot_10'], layout.slots['slot_11']
+    # 두 칸이 위아래로 붙어 있다: 10번은 아래에서 위로, 11번은 위에서 아래로 들어간다 (서로를 지나지 않음)
+    low = layout.park_poses(s10)
+    assert low[0]['y'] == pytest.approx(-0.43)
+    assert low[0]['yaw'] == pytest.approx(math.pi / 2, abs=1e-3)
+    high = layout.park_poses(s11)
+    assert high[0]['y'] == pytest.approx(0.43)
+    assert high[-1]['yaw'] == pytest.approx(-math.pi / 2, abs=1e-3)
+    for entry in (low[0], high[0]):           # 진입 자리는 다른 칸 밖에 있다
+        assert min(abs(entry['y'] - s10['y']), abs(entry['y'] - s11['y'])) >= 0.28
+    up = {'x': 0.02, 'y': 0.16, 'yaw': math.pi / 2 + 0.05}            # 이미 칸 안에 바로 서 있다
+    assert layout.park_poses(s11, up) == [{**s11, 'yaw': round(s11['yaw'], 4)}]
+    down = {'x': 0.02, 'y': 0.16, 'yaw': -math.pi / 2 + 0.05}         # 반대로 서 있어도 주차된 것
+    assert len(layout.park_poses(s11, down)) == 1
+    crooked = {'x': 0.02, 'y': 0.16, 'yaw': math.pi / 2 + 0.4}        # 자리는 맞지만 비뚤다
+    assert len(layout.park_poses(s11, crooked)) == 2
+
+
+def test_precise_tolerance_for_parking_only():
+    """주차·주유 진입은 좁은 도착 허용 오차, 그 밖은 화면에서 정한 값."""
+    sent = []
+
+    class TuneLink(FakeLink):
+        def set_nav2_parameters(self, by_node):
+            sent.append(by_node['controller_server'])
+            return list(by_node)
+
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, TuneLink, CALLSIGNS)
+    try:
+        fleet.park('pinky1', 'slot_10')
+        assert sent[-1]['general_goal_checker.xy_goal_tolerance'] == 0.03
+        fleet.cancel('pinky1')
+        fleet.unpark('pinky1', 'slot_10')
+        assert sent[-1]['general_goal_checker.xy_goal_tolerance'] == 0.03
+        fleet.cancel('pinky1')
+        fleet.drive('pinky1', 1)
+        assert sent[-1]['general_goal_checker.xy_goal_tolerance'] == 0.08
+        assert sent[-1]['general_goal_checker.yaw_goal_tolerance'] == 0.25
+        fleet.cancel('pinky1')
+        fleet.fuel('pinky1', 'enter')
+        assert sent[-1]['general_goal_checker.xy_goal_tolerance'] == 0.03
+    finally:
+        fleet.close()
+
+
 # ---- 주행 설정, SLAM 지도, 라이다 점 ------------------------------------------
 def test_tuning_clean_and_nav2_parameters():
     from pinky_parking_control import tuning
@@ -442,3 +493,146 @@ def test_scan_points_and_grid_encoding():
                            origin=SimpleNamespace(position=SimpleNamespace(x=-1.0, y=-2.0)))
     grid = encode_grid(SimpleNamespace(info=info, data=[0, 100, -1, 0]))   # 아랫줄부터 온다
     assert grid['cells'] == 'uf' + 'fo' and grid['origin'] == {'x': -1.0, 'y': -2.0}
+
+
+# ---- 기준 경로 (가제보 등에서 기록한 주행 좌표) ---------------------------------
+def write_reference(path):
+    """시험용 기록: 1 m 직진 → 2초 정지 → 0.5 m 위로."""
+    lines = ['t_s,step_id,step_name,sub_state,x_mm,y_mm,yaw_rad,yaw_deg']
+    t = 0.0
+    for i in range(101):                                   # x 0 → 1000 mm
+        lines.append(f'{t:.2f},1,[1] 직진,,{i * 10:.1f},0.0,0.0,0.0')
+        t += 0.05
+    for _ in range(40):                                    # 정지
+        lines.append(f'{t:.2f},1,[1] 직진,,1000.0,0.0,1.5708,90.0')
+        t += 0.05
+    for i in range(1, 51):                                 # y 0 → 500 mm
+        lines.append(f'{t:.2f},2,[2] 위로,,1000.0,{i * 10:.1f},1.5708,90.0')
+        t += 0.05
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return path
+
+
+def test_reference_splits_at_stops_and_resamples(tmp_path):
+    from pinky_parking_control import reference
+    segments = reference.load_reference(write_reference(tmp_path / 'ref.csv'))
+    assert [s['length'] for s in segments] == [1.0, 0.5]           # 멈춘 곳에서 둘로 나뉜다
+    assert segments[0]['steps'] == ['[1] 직진'] and '[2] 위로' in segments[1]['steps']
+    first = segments[0]['poses']
+    assert first[0] == {'x': 0.0, 'y': 0.0, 'yaw': 0.0} and first[-1]['x'] == 1.0
+    gaps = [math.hypot(b['x'] - a['x'], b['y'] - a['y']) for a, b in zip(first, first[1:])]
+    assert max(gaps) <= 0.045 and len(first) < 40                  # 3 cm 간격으로 다시 뽑는다
+    # 로봇이 시작점에서 떨어져 있으면 그 사이를 잇는다
+    lead = reference.with_approach(first, {'x': 0.0, 'y': -0.3, 'yaw': 0.0})
+    assert lead[0]['y'] == -0.3 and len(lead) > len(first)
+
+
+def test_reference_deviation():
+    from pinky_parking_control import reference
+    planned = [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 0.0}]
+    actual = [[0.0, 0.0, 0.02], [1.0, 0.5, 0.04], [2.0, 0.9, 0.0]]
+    assert reference.deviation(planned, actual) == {'mean': 0.02, 'max': 0.04, 'end': 0.1}
+    assert reference.deviation(planned, []) is None
+
+
+def test_fleet_follows_reference_segment(tmp_path):
+    config = dict(CONFIG, references={'pinky1': str(write_reference(tmp_path / 'ref.csv'))})
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), config, FakeLink, CALLSIGNS)
+    try:
+        view = fleet.reference_view('pinky1')
+        assert [s['length'] for s in view] == [1.0, 0.5] and fleet.reference_view('pinky2') == []
+        task = fleet.follow_reference('pinky1', 1)
+        assert task.action == 'reference' and task.mode == 'path'
+        assert task.poses[-1] == {'x': 1.0, 'y': 0.5, 'yaw': 1.5708}
+        assert len(fleet.layout_dict()['references']['pinky1']) == 2
+        fleet.cancel('pinky1')
+        for bad in (5, 'x', -1):
+            with pytest.raises(UnknownName):
+                fleet.follow_reference('pinky1', bad)
+        with pytest.raises(UnknownName):
+            fleet.follow_reference('pinky2', 0)
+    finally:
+        fleet.close()
+
+
+def test_real_robot_pose_is_unconfirmed_until_set():
+    """실물(배터리 값이 있다)은 켠 직후 위치가 가정일 뿐이다. 위치 맞추기나 마커 보정 뒤에 확인된다."""
+    class RealLink(FakeLink):
+        marker = None
+
+        def status(self):
+            return {**super().status(), 'battery_v': 7.4, 'marker': self.marker}
+
+        def set_pose(self, pose):
+            self.pose = dict(pose)
+
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, RealLink, CALLSIGNS)
+    try:
+        assert fleet.robot('pinky1')['pose_confirmed'] is False
+        fleet.set_pose('pinky1', slot='slot_11')
+        assert fleet.robot('pinky1')['pose_confirmed'] is True
+        assert fleet.robot('pinky2')['pose_confirmed'] is False
+        fleet.links['pinky2'].marker = {'visible': [], 'last': {'id': 0, 'distance': 0.03}}
+        assert fleet.robot('pinky2')['pose_confirmed'] is True         # 마커로 한 번 보정됐다
+    finally:
+        fleet.close()
+
+
+def test_sim_robot_pose_is_confirmed_from_start(arena):
+    assert arena.robot('pinky1')['pose_confirmed'] is True
+
+
+# ---- 상태 알림: 왜 안 움직이는지 ----------------------------------------------
+def test_health_reasons_and_failure_detail():
+    from pinky_parking_control import health
+    line = 'RegulatedPurePursuitController detected collision ahead!'
+    assert '장애물' in health.reason_from_log(line)
+    assert health.reason_from_log('Activating controller_server') == ''
+    assert health.failure_detail(105, '') == (
+        'Nav2 가 작업을 중단했습니다: 제자리에서 나아가지 못했습니다 (끼임, 바퀴 헛돎)')
+    assert health.failure_detail(0, '앞에 장애물') == 'Nav2 가 작업을 중단했습니다: 앞에 장애물'
+    assert health.failure_detail(0, '') == 'Nav2 가 작업을 중단했습니다'
+
+
+def test_stall_watch_counts_only_while_not_moving():
+    from pinky_parking_control.health import StallWatch
+    watch = StallWatch()
+    here = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+    assert watch.update(None, here, 0.0) == 0.0                 # 작업이 없으면 세지 않는다
+    assert watch.update(7, here, 10.0) == 0.0                   # 작업 시작
+    assert watch.update(7, here, 15.0) == 5.0                   # 5초째 그대로
+    assert watch.update(7, {'x': 0.05, 'y': 0.0, 'yaw': 0.0}, 16.0) == 0.0     # 움직였다
+    assert watch.update(7, {'x': 0.05, 'y': 0.0, 'yaw': 0.2}, 17.0) == 0.0     # 제자리 회전도 움직임
+    assert watch.update(8, {'x': 0.05, 'y': 0.0, 'yaw': 0.2}, 30.0) == 0.0     # 새 작업은 다시 센다
+
+
+def test_alerts_order_and_texts():
+    from pinky_parking_control import health
+    base = {'odom_hz': 20.0, 'nav2_ready': True, 'localized': True, 'battery_v': 7.8,
+            'pose_confirmed': True, 'task': None, 'issue': None}
+    assert health.alerts(base) == []
+    low = health.alerts({**base, 'battery_v': 6.9})
+    assert low[0]['level'] == 'error' and '충전' in low[0]['text']
+    assert health.alerts({**base, 'battery_v': 7.2})[0]['level'] == 'warning'
+    gone = health.alerts({**base, 'odom_hz': 0})
+    assert gone[0] == {'level': 'error', 'text': '로봇 응답 없음: 전원과 와이파이를 확인하세요'}
+    running = {'state': 'running', 'target': '1번 트랙'}
+    issue = {'text': '앞에 장애물이 있어 멈췄습니다 (라이다가 본 물체)', 'age_s': 1.0}
+    stuck = health.alerts({**base, 'task': running, 'issue': issue}, stalled_s=6.0)
+    assert stuck[0]['level'] == 'error' and '6초째 움직이지 않습니다' in stuck[0]['text']
+    assert '장애물' in stuck[0]['text']
+    moving = health.alerts({**base, 'task': running, 'issue': issue}, stalled_s=1.0)
+    assert moving == [{'level': 'warning', 'text': issue['text']}]     # 움직이는 중이면 경고만
+    old = health.alerts({**base, 'task': running, 'issue': {**issue, 'age_s': 30}}, stalled_s=6.0)
+    assert '사유를 알 수 없습니다' in old[0]['text']                    # 오래된 경고는 사유로 안 쓴다
+    failed = {'state': 'failed', 'target': '2번 트랙', 'detail': '경로 없음', 'finished': 100.0}
+    assert '2번 트랙 실패: 경로 없음' in health.alerts({**base, 'task': failed}, now=150.0)[0]['text']
+    assert health.alerts({**base, 'task': failed}, now=500.0) == []    # 2분 지나면 내린다
+
+
+def test_fleet_status_has_alerts_and_stall(arena):
+    arena.drive('pinky1', 1)
+    for _ in range(3):                      # 감시 루프가 한 번 돌 때까지
+        time.sleep(0.15)
+    status = arena.robot('pinky1')
+    assert 'alerts' in status and status['stalled_s'] >= 0.0
