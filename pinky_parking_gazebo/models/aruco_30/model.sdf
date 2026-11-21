@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!-- scripts/make_arena_sim.py 가 만든 바닥 마커. 직접 고치지 않는다. -->
+<sdf version="1.8">
+  <model name="aruco_30">
+    <static>true</static>
+    <link name="link">
+      <visual name="visual">
+        <geometry><plane><normal>0 0 1</normal><size>0.0667 0.0667</size></plane></geometry>
+        <material>
+          <ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal>
+            <albedo_map>model://aruco_30/materials/textures/aruco_30.png</albedo_map>
+            <metalness>0</metalness><roughness>1</roughness>
+          </metal></pbr>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
