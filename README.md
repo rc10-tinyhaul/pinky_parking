@@ -97,7 +97,11 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 
 ### 실물 로봇
 
-절차는 [docs/real_robot.md](docs/real_robot.md)에 있습니다. 로봇에서 공식 bringup과 속도 명령 감시(`cmd_vel_watchdog`)를 띄우고, PC에서는 `PINKY_NETWORK=host ./run.sh`로 들어가 Nav2를 `use_sim_time:=false`로 실행합니다. 첫 시험은 `max_speed:=0.1` 이하로 합니다.
+절차는 [docs/real_robot.md](docs/real_robot.md)에 있습니다. 로봇마다 `pinky_start.sh`(구동, 라이다, 속도 명령 감시)와 카메라 서버를 켠 뒤, PC에서 한 번에 켭니다.
+
+```bash
+scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>   # 연결 점검 → Nav2 → 관제 서버. 끄기: scripts/real_down.sh
+```
 
 ### 문제 해결
 
