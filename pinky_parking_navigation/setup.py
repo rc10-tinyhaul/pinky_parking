@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.py')),
         ('share/' + package_name + '/maps', glob('maps/*.yaml') + glob('maps/*.pgm')),
+        ('share/' + package_name + '/config', glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,6 +21,9 @@ setup(
         'console_scripts': [
             'odom_localizer = pinky_parking_navigation.odom_localizer:main',
             'tf_pose = pinky_parking_navigation.tf_pose:main',
+            'save_slam_map = pinky_parking_navigation.save_slam_map:main',
+            'marker_localizer = pinky_parking_navigation.marker_localizer:main',
+            'snapshot_map = pinky_parking_navigation.snapshot_map:main',
         ],
     },
     maintainer='syaseuta',

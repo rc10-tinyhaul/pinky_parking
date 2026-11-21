@@ -34,6 +34,7 @@ def setup(context):
                   / 'launch/robot_nav.launch.py')
     _, robots = load_robots(arg('robots') or share / 'config/robots_arena.yaml')
     only = [n for n in arg('only').split(',') if n]
+    cameras = dict(item.split('=', 1) for item in arg('cameras').split(',') if '=' in item)
     actions = []
     for robot in robots:
         if only and robot['name'] not in only:
@@ -43,7 +44,9 @@ def setup(context):
             'yaw': robot['yaw'], 'map': arg('map'), 'localization': arg('localization'),
             'use_sim_time': 'false', 'max_speed': arg('max_speed'),
             'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
-            'lookahead': arg('lookahead')}
+            'lookahead': arg('lookahead'),
+            'camera_url': cameras.get(robot['name'], ''),
+            'fine_amcl': 'true', 'pose_from_tf': 'true'}
         if arg('bridge').lower() == 'true':
             # 로봇은 도메인 + 100 에서 켠다. 중계가 시각을 PC 시계로 고쳐 이 도메인으로 넘긴다
             actions.append(ExecuteProcess(
@@ -81,6 +84,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'max_turn', default_value='0.8',
             description='회전 속도 상한 [rad/s]. 바퀴 미끄러짐(방향 오차)을 줄이려고 낮춤'),
+        DeclareLaunchArgument(
+            'cameras', default_value='',
+            description='로봇 카메라 서버: 이름=주소 를 쉼표로 (예: pinky1=http://192.168.0.5:8090). '
+                        '주면 마커(ArUco)로 위치를 바로잡는다'),
         DeclareLaunchArgument(
             'bridge', default_value='true',
             description='시계 보정 중계(clock_bridge). 로봇을 도메인 + 100 에서 켠다. '

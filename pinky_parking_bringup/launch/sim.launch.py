@@ -48,7 +48,8 @@ def setup(context):
             'domain_id': robot['domain_id'], 'map': arg('map'),
             'localization': arg('localization'), 'max_speed': arg('max_speed'),
             'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
-            'lookahead': arg('lookahead'), **pose}))
+            'lookahead': arg('lookahead'), 'fine_amcl': arg('fine_amcl'),
+            'pose_from_tf': arg('fine_amcl'), **pose}))
     if arg('nav').lower() == 'true':
         actions.append(TimerAction(period=float(arg('nav_delay')), actions=nav_actions))
     return actions
@@ -76,5 +77,8 @@ def generate_launch_description():
             'goal_tolerance', default_value='', description='도착 허용 거리 [m] (공식 0.25)'),
         DeclareLaunchArgument('max_turn', default_value='', description='회전 속도 상한 [rad/s]'),
         DeclareLaunchArgument('lookahead', default_value='', description='경로 추종 주시 거리 [m]'),
+        DeclareLaunchArgument(
+            'fine_amcl', default_value='false',
+            description='AMCL 을 작은 경기장에 맞게 (실물과 같은 설정으로 시험할 때 true)'),
         OpaqueFunction(function=setup),
     ])

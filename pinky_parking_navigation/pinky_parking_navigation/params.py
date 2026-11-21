@@ -3,7 +3,7 @@ import copy
 
 
 def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max_turn=None,
-                lookahead=None):
+                lookahead=None, fine_amcl=False):
     """
     공식 nav2_params.yaml 에서 필요한 값만 바꾼 사본을 돌려준다.
 
@@ -15,6 +15,8 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
       출차 거리가 0.4 m 라서 0.25 m 로는 칸에 들어가거나 나오기 전에 도착으로 친다.
     - max_turn [rad/s]: 주면 회전 속도 상한을 낮춘다. 바퀴 기록(odom)만으로 위치를 잡을 때
       빠른 제자리 회전에서 바퀴가 미끄러져 방향 오차가 쌓이는 것을 줄인다.
+    - fine_amcl: AMCL 을 2 m 크기 경기장에 맞춘다. 공식 값은 0.15 m / 0.1 rad 움직여야 위치를
+      다시 맞추는데, 그 사이에 차선 폭만큼 틀어진다. 더 자주 맞추고, 가까운 벽만 믿게 한다.
     - lookahead [m]: 주면 경로 추종의 주시 거리를 이 값으로 고정하고(공식은 0.3 ~ 0.9 m), 도착 전
       감속 구간도 같은 크기로 줄인다(공식 0.6 m). 경기장 트랙은 반경 0.4 m 라서 멀리 보면 곡선
       안쪽으로 파고들고, 0.4 m 짜리 짧은 이동은 처음부터 끝까지 감속 구간이 된다.
@@ -23,6 +25,16 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
     amcl = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
     amcl['set_initial_pose'] = True
     amcl['initial_pose'] = {'x': x, 'y': y, 'z': 0.0, 'yaw': yaw}
+    if fine_amcl:
+        amcl['update_min_d'] = 0.03            # 3 cm 움직일 때마다 (공식 0.15)
+        amcl['update_min_a'] = 0.05            # 약 3 도 돌 때마다 (공식 0.1)
+        amcl['laser_max_range'] = 6.0          # 지도를 찍은 범위와 같게
+        amcl['max_beams'] = 180
+        amcl['laser_likelihood_max_dist'] = 0.5
+        amcl['sigma_hit'] = 0.08
+        amcl['z_hit'], amcl['z_rand'] = 0.7, 0.3   # 지도에 없는 것(사람, 옮긴 물건)에 덜 끌려가게
+        amcl['resample_interval'] = 1
+        amcl['transform_tolerance'] = 0.5      # 와이파이로 오는 스캔이 조금 늦어도 받는다
     if max_speed is not None:
         controller = params.setdefault('controller_server', {}).setdefault('ros__parameters', {})
         follow = controller.setdefault('FollowPath', {})

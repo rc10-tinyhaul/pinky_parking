@@ -39,11 +39,14 @@ def setup(context):
             f'지도 파일이 없습니다: {map_yaml}\n'
             '먼저 지도를 만들어 저장하세요 (pinky_parking_navigation/README.md 의 "지도 만들기").')
     nav_share = Path(get_package_share_directory('pinky_navigation'))
+    share = Path(get_package_share_directory('pinky_parking_navigation'))
     base_file = arg('params_file') or str(nav_share / 'params/nav2_params.yaml')
     limits = {key: float(arg(key)) if arg(key) else None
               for key in ('max_speed', 'goal_tolerance', 'max_turn', 'lookahead')}
+    fine_amcl = arg('fine_amcl').lower() == 'true'
     params = nav2_params(yaml.safe_load(Path(base_file).read_text()),
-                         float(arg('x')), float(arg('y')), float(arg('yaw')), **limits)
+                         float(arg('x')), float(arg('y')), float(arg('yaw')),
+                         fine_amcl=fine_amcl, **limits)
 
     domain_id = arg('domain_id')
     use_sim_time = 'True' if arg('use_sim_time').lower() == 'true' else 'False'
@@ -67,6 +70,14 @@ def setup(context):
             cmd=['ros2', 'run', 'pinky_parking_navigation', 'odom_localizer', '--ros-args',
                  '-p', f"x:={float(arg('x'))}", '-p', f"y:={float(arg('y'))}",
                  '-p', f"yaw:={float(arg('yaw'))}", '-p', f'use_sim_time:={use_sim_time}']))
+    if localization == 'amcl' and arg('pose_from_tf').lower() == 'true':
+        # AMCL 은 로봇이 움직여 위치를 다시 맞출 때만 amcl_pose 를 낸다. 서 있는 동안에도 관제 화면과
+        # 마커 보정이 지금 위치를 알도록, TF(map -> base_footprint)를 같은 토픽으로 계속 낸다.
+        actions.append(ExecuteProcess(
+            name=f'tf_pose_domain{domain_id}', output='screen',
+            additional_env={'ROS_DOMAIN_ID': domain_id},
+            cmd=['ros2', 'run', 'pinky_parking_navigation', 'tf_pose', '--ros-args',
+                 '-p', f'use_sim_time:={use_sim_time}']))
     if localization == 'slam':
         # AMCL 대신 slam_toolbox 가 라이다로 map -> odom 을 계속 바로잡는다 (미리 만든 지도 불필요)
         cmd.append("lifecycle_nodes_local:=['map_server']")
@@ -76,6 +87,18 @@ def setup(context):
             cmd=['ros2', 'launch', 'pinky_parking_navigation', 'slam_localization.launch.py',
                  f"x:={float(arg('x'))}", f"y:={float(arg('y'))}", f"yaw:={float(arg('yaw'))}",
                  f'use_sim_time:={use_sim_time}']))
+    if arg('camera_url'):
+        # 카메라가 본 ArUco 마커로 위치를 바로잡는다 (marker_localizer). 설정 파일은 원본을 고치게 한다
+        markers_file = arg('markers_file') or str((share / 'config/markers.yaml').resolve())
+        actions.append(ExecuteProcess(
+            name=f'marker_localizer_domain{domain_id}', output='screen',
+            additional_env={'ROS_DOMAIN_ID': domain_id},
+            cmd=['ros2', 'run', 'pinky_parking_navigation', 'marker_localizer', '--ros-args',
+                 '-p', f"camera_url:={arg('camera_url')}", '-p', f'markers_file:={markers_file}',
+                 # 라이다 위치 추정(AMCL)은 스스로 몇 cm 씩 흔들린다. 그만큼은 마커로 덮어쓰지 않는다
+                 '-p', f"min_correction:={0.04 if arg('localization') == 'amcl' else 0.02}",
+                 '-p', f"min_correction_yaw:={0.07 if arg('localization') == 'amcl' else 0.04}",
+                 '-p', f'use_sim_time:={use_sim_time}']))
     # 별도 'ros2 launch' 프로세스로 띄운다. launch 안에서 환경변수만 바꾸면
     # 포함된 launch 의 노드에는 ROS_DOMAIN_ID 가 적용되지 않는다.
     actions.append(ExecuteProcess(
@@ -94,6 +117,17 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'max_speed', default_value='',
             description='직진 속도 상한 [m/s]. 비우면 공식 값 (실물 첫 시험은 0.1 등으로 낮춤)'),
+        DeclareLaunchArgument(
+            'pose_from_tf', default_value='false',
+            description='amcl 일 때 위치를 TF 에서 계속 낸다 (서 있어도 amcl_pose 가 갱신됨)'),
+        DeclareLaunchArgument(
+            'fine_amcl', default_value='false',
+            description='AMCL 을 작은 경기장에 맞게 (자주 맞춤, 지도에 없는 것에 덜 민감). amcl 일 때만'),
+        DeclareLaunchArgument(
+            'camera_url', default_value='',
+            description='로봇 카메라 서버 주소 (예: http://192.168.0.5:8090). 주면 마커로 위치를 바로잡는다'),
+        DeclareLaunchArgument(
+            'markers_file', default_value='', description='마커 설정 (기본: config/markers.yaml)'),
         DeclareLaunchArgument(
             'goal_tolerance', default_value='',
             description='도착 허용 거리 [m]. 비우면 공식 값 0.25 (경기장 주차·출차는 0.08 정도)'),
