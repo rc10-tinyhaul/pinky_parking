@@ -5,19 +5,19 @@
 그 도메인에는 로봇 한 대일 때와 같은 이름의 토픽이 나온다: /scan, /odom, /cmd_vel, /tf.
 
   ros2 launch pinky_parking_gazebo spawn_robot.launch.py name:=pinky1 domain_id:=11
+  ros2 launch pinky_parking_gazebo spawn_robot.launch.py name:=pinky2 domain_id:=12 \
+      vehicle:=T10
 """
-from pathlib import Path
 import tempfile
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from pinky_parking_description.vehicles import vehicle_urdf
 from pinky_parking_gazebo.sim import bridge_entries
 from pinky_parking_gazebo.sim import sim_urdf
-import xacro
 import yaml
 
 
@@ -35,14 +35,12 @@ def setup(context):
     name = arg('name')
     env = {'ROS_DOMAIN_ID': arg('domain_id')}
     camera = arg('camera').lower() == 'true'
-    description_share = Path(get_package_share_directory('pinky_description'))
 
-    # 공식 upload_robot.launch.py 와 같은 xacro 인자. Gazebo 안에서 구분하려고 namespace 를 주고,
-    # 도메인 쪽 프레임은 접두어 없이 나오게 고친다 (sim.sim_urdf).
-    urdf = sim_urdf(xacro.process_file(
-        str(description_share / 'urdf/robot.urdf.xacro'),
-        mappings={'namespace': f'{name}/', 'is_sim': 'True',
-                  'cam_tilt_deg': arg('cam_tilt_deg')}).toxml(), name)
+    # 차종(pinky_parking_description 의 vehicles.yaml)의 URDF. 공식 upload_robot.launch.py 와 같은
+    # xacro 인자이고, Gazebo 안에서 구분하려고 namespace 를 주고, 도메인 쪽 프레임은 접두어 없이
+    # 나오게 고친다 (sim.sim_urdf).
+    urdf = sim_urdf(vehicle_urdf(arg('vehicle'), namespace=f'{name}/', is_sim=True,
+                                 cam_tilt_deg=arg('cam_tilt_deg')), name)
     bridge_file = write_temp(
         yaml.safe_dump(bridge_entries(name, camera), sort_keys=False),
         f'pinky_{name}_bridge_', '.yaml')
@@ -84,6 +82,9 @@ def generate_launch_description():
         DeclareLaunchArgument('y', default_value='0.0', description='스폰 위치 y [m]'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='스폰 방향 [rad]'),
         DeclareLaunchArgument('camera', default_value='true', description='카메라 영상 브리지'),
+        DeclareLaunchArgument(
+            'vehicle', default_value='T00',
+            description='차종 (pinky_parking_description/config/vehicles.yaml)'),
         DeclareLaunchArgument('cam_tilt_deg', default_value='8', description='카메라 기울기 [deg]'),
         OpaqueFunction(function=setup),
     ])

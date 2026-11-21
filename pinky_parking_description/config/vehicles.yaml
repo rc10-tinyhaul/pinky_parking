@@ -1,0 +1,10 @@
+# 차종. robots.yaml 의 vehicle 에 이름을 쓴다. 단위 m, kg.
+# 이름은 관제센터(pinky_parking_control/config/arena.yaml 의 vehicles)와 같다.
+# 트레일러는 차체 뒤끝에 붙은 고정형 상자다 (docs/plan.md: T00 140 mm, T10 240 mm, T15 290 mm).
+#   length: 차체 뒤로 늘어나는 길이, width: 폭, top: 바닥에서 윗면까지 (LiDAR 스캔 높이 약 0.125 보다 낮게),
+#   clearance: 바닥에서 아랫면까지, mass: 무게
+# 실물 트레일러를 만들면 재서 맞춘다.
+vehicles:
+  T00: {}
+  T10: {length: 0.10, width: 0.10, top: 0.06, clearance: 0.01, mass: 0.05}
+  T15: {length: 0.15, width: 0.10, top: 0.06, clearance: 0.01, mass: 0.07}

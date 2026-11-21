@@ -43,9 +43,9 @@ def setup(context):
         pose = {key: robot[key] for key in ('x', 'y', 'yaw')}
         actions.append(include('pinky_parking_gazebo', 'spawn_robot.launch.py', {
             'name': robot['name'], 'domain_id': robot['domain_id'],
-            'camera': arg('camera'), **pose}))
+            'vehicle': robot['vehicle'], 'camera': arg('camera'), **pose}))
         nav_actions.append(include('pinky_parking_navigation', 'robot_nav.launch.py', {
-            'domain_id': robot['domain_id'], 'map': arg('map'),
+            'domain_id': robot['domain_id'], 'map': arg('map'), 'vehicle': robot['vehicle'],
             'localization': arg('localization'), 'max_speed': arg('max_speed'),
             'goal_tolerance': arg('goal_tolerance'), 'max_turn': arg('max_turn'),
             'lookahead': arg('lookahead'), 'fine_amcl': arg('fine_amcl'),
