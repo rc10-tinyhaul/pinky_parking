@@ -6,9 +6,9 @@ Pinky Pro 차량 모델입니다. 공식 로봇 모델(`pinky_description`) 뒤�
 
 | 차종 | 트레일러 | 전체 길이 (`docs/plan.md`) |
 |---|---|---|
-| `basic` | 없음. 공식 모델과 같습니다 | 140 mm |
-| `trailer10` | 차체 뒤로 100 mm | 240 mm |
-| `trailer15` | 차체 뒤로 150 mm | 290 mm |
+| `T00` | 없음. 공식 모델과 같습니다 | 140 mm |
+| `T10` | 차체 뒤로 100 mm | 240 mm |
+| `T15` | 차체 뒤로 150 mm | 290 mm |
 
 트레일러 항목(단위 m, kg):
 
@@ -20,7 +20,7 @@ Pinky Pro 차량 모델입니다. 공식 로봇 모델(`pinky_description`) 뒤�
 | `clearance` | 바닥에서 아랫면까지 |
 | `mass` | 무게 |
 
-실물 트레일러를 만들면 재서 맞춥니다. 차종은 `pinky_parking_bringup`의 `robots.yaml`에서 로봇마다 고릅니다(`vehicle: trailer10`).
+실물 트레일러를 만들면 재서 맞춥니다. 차종은 `pinky_parking_bringup`의 `robots.yaml`에서 로봇마다 고릅니다(`vehicle: T10`).
 
 ## 모델
 
@@ -29,7 +29,7 @@ Pinky Pro 차량 모델입니다. 공식 로봇 모델(`pinky_description`) 뒤�
 - 바닥에서 떠 있고 바퀴가 없습니다. 무게는 차체가 받칩니다.
 - 윗면이 LiDAR 스캔 높이보다 낮아서, LiDAR가 자기 트레일러를 장애물로 보지 않습니다. 실물에서 트레일러나 짐이 이보다 높으면 스캔 필터가 필요합니다.
 
-파이썬에서는 `pinky_parking_description.vehicles`의 `vehicle_urdf(차종, namespace=…, is_sim=…)`로 URDF를, `footprint(차종 설정)`으로 Nav2 footprint를 만듭니다. footprint는 트레일러 차종만 뒤쪽을 트레일러 끝까지 늘리고, `basic`은 `None`(공식 Nav2 값)입니다.
+파이썬에서는 `pinky_parking_description.vehicles`의 `vehicle_urdf(차종, namespace=…, is_sim=…)`로 URDF를, `footprint(차종 설정)`으로 Nav2 footprint를 만듭니다. footprint는 트레일러 차종만 뒤쪽을 트레일러 끝까지 늘리고, `T00`은 `None`(공식 Nav2 값)입니다.
 
 ## 곡선에서 트레일러 꼬리
 
@@ -37,7 +37,7 @@ Pinky Pro 차량 모델입니다. 공식 로봇 모델(`pinky_description`) 뒤�
 
 | 차종 | 1번 차선 (곡선 반경 405 mm) | 2번 차선 (595 mm) |
 |---|---|---|
-| `trailer10` | 83 mm (여유 2 mm) | 73 mm |
-| `trailer15` | 103 mm (테이프를 18 mm 넘음) | 88 mm (3 mm 넘음) |
+| `T10` | 83 mm (여유 2 mm) | 73 mm |
+| `T15` | 103 mm (테이프를 18 mm 넘음) | 88 mm (3 mm 넘음) |
 
-도면대로 트레일러 차량은 2번 차선을 씁니다. `trailer15`는 2번 차선에서도 곡선에서 테이프에 걸칩니다.
+도면대로 트레일러 차량은 2번 차선을 씁니다. `T15`는 2번 차선에서도 곡선에서 테이프에 걸칩니다.

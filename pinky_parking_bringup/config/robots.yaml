@@ -1,9 +1,9 @@
 # 시뮬레이션에 띄울 로봇 목록. 대수·도메인·위치는 여기서만 바꾼다.
 # domain_id: 로봇마다 다른 ROS_DOMAIN_ID (실물 운용과 같은 구조)
 # x, y [m], yaw [rad]: Gazebo 월드 좌표이자 AMCL 초기 위치.
-# vehicle: 차종 (pinky_parking_description/config/vehicles.yaml). basic, trailer10, trailer15
+# vehicle: 차종 (pinky_parking_description/config/vehicles.yaml). T00, T10, T15
 #   지도를 월드 원점 (0,0), yaw 0 에서 시작해 만들면 지도 좌표 = 월드 좌표가 된다.
 world_name: pinky_factory.world
 robots:
-  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: basic}
-  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: basic}
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: T00}
+  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: T00}

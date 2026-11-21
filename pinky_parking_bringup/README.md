@@ -22,8 +22,8 @@
 ```yaml
 world_name: pinky_factory.world
 robots:
-  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: basic}
-  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: basic}
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: T00}
+  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: T00}
 ```
 
 | 필드 | 설명 |
@@ -31,7 +31,7 @@ robots:
 | `name` | 로봇 이름 |
 | `domain_id` | 이 로봇의 `ROS_DOMAIN_ID` |
 | `x`, `y` [m], `yaw` [rad] | 스폰 위치이자 AMCL 초기 위치 |
-| `vehicle` | 차종(`pinky_parking_description`의 `config/vehicles.yaml`). 없으면 `basic` |
+| `vehicle` | 차종(`pinky_parking_description`의 `config/vehicles.yaml`). 없으면 `T00` |
 
 `config/pinky1_only.yaml`은 지도 작성용(pinky1 한 대)입니다.
 

@@ -35,12 +35,12 @@ def test_basic_is_the_official_robot():
     official = xacro.process_file(
         str(Path(get_package_share_directory('pinky_description')) / 'urdf/robot.urdf.xacro'),
         mappings={'namespace': 'pinky1/', 'is_sim': 'True', 'cam_tilt_deg': '8'}).toxml()
-    basic = vehicle_urdf('basic', namespace='pinky1/', is_sim=True,
+    basic = vehicle_urdf('T00', namespace='pinky1/', is_sim=True,
                          vehicles=load_vehicles(CONFIG))
     assert structure(basic) == structure(official)
 
 
-@pytest.mark.parametrize('name', ['trailer10', 'trailer15'])
+@pytest.mark.parametrize('name', ['T10', 'T15'])
 def test_trailer_behind_body_and_below_lidar(name):
     spec = load_vehicles(CONFIG)[name]
     rear, front, bottom, top, width = trailer_box(
@@ -65,8 +65,8 @@ def test_unknown_vehicle_and_too_tall_trailer(tmp_path):
 
 def test_footprint():
     vehicles = load_vehicles(CONFIG)
-    assert footprint(vehicles['basic']) is None            # 공식 Nav2 값을 그대로 씀
-    poly = footprint(vehicles['trailer10'])
+    assert footprint(vehicles['T00']) is None            # 공식 Nav2 값을 그대로 씀
+    poly = footprint(vehicles['T10'])
     xs, ys = [p[0] for p in poly], [p[1] for p in poly]
     assert min(xs) == pytest.approx(BODY_REAR - 0.10)       # 트레일러 끝까지
     assert max(xs) == pytest.approx(0.06)                   # 앞은 공식 값

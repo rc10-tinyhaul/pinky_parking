@@ -2,7 +2,7 @@
 차종(config/vehicles.yaml)과 그 차종의 URDF.
 
   from pinky_parking_description.vehicles import vehicle_urdf
-  urdf = vehicle_urdf('trailer10', namespace='pinky1/', is_sim=True)
+  urdf = vehicle_urdf('T10', namespace='pinky1/', is_sim=True)
 """
 from pathlib import Path
 

@@ -122,7 +122,7 @@ def generate_launch_description():
         DeclareLaunchArgument('y', default_value='0.0', description='AMCL 초기 위치 y [m]'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='AMCL 초기 방향 [rad]'),
         DeclareLaunchArgument(
-            'vehicle', default_value='basic',
+            'vehicle', default_value='T00',
             description='차종: 트레일러면 footprint 를 늘림 (pinky_parking_description)'),
         DeclareLaunchArgument(
             'max_speed', default_value='',

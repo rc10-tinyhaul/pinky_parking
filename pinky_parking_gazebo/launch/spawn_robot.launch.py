@@ -6,7 +6,7 @@
 
   ros2 launch pinky_parking_gazebo spawn_robot.launch.py name:=pinky1 domain_id:=11
   ros2 launch pinky_parking_gazebo spawn_robot.launch.py name:=pinky2 domain_id:=12 \
-      vehicle:=trailer10
+      vehicle:=T10
 """
 import tempfile
 
@@ -83,7 +83,7 @@ def generate_launch_description():
         DeclareLaunchArgument('yaw', default_value='0.0', description='스폰 방향 [rad]'),
         DeclareLaunchArgument('camera', default_value='true', description='카메라 영상 브리지'),
         DeclareLaunchArgument(
-            'vehicle', default_value='basic',
+            'vehicle', default_value='T00',
             description='차종 (pinky_parking_description/config/vehicles.yaml)'),
         DeclareLaunchArgument('cam_tilt_deg', default_value='8', description='카메라 기울기 [deg]'),
         OpaqueFunction(function=setup),
