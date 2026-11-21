@@ -1,7 +1,7 @@
 /*
   모의 로봇: 관제센터를 서버 없이 확인할 때만 쓴다 (주소 끝에 ?demo).
     ?demo          경기장 도면 (config/arena.yaml, scenario.yaml 을 옮긴 값)
-    ?demo=factory  지금 시뮬레이션용 공장 월드
+    ?demo=factory  공식 공장 월드 배치 (예전 기본)
     ?demo=lock     경기장 + 팀 비밀번호 'demo'
   실제 API 와 같은 모양으로 답한다. 로봇은 장애물을 무시하고 경유점을 따라 0.18 m/s 로 간다.
 */
@@ -40,7 +40,7 @@ window.PinkyDemo = (() => {
     vehicles: VEHICLES, pending: PENDING, callsigns: CALLSIGNS, teleop: { linear: 0.15, angular: 1.2 },
   };
   const FACTORY = {
-    kind: 'factory', name: '공장 월드 (시뮬레이션 임시)',
+    kind: 'factory', name: '공장 월드 (예전 기본)',
     slots: { slot_10: { x: 0.3, y: -1.1, yaw: 0 }, slot_11: { x: -0.8, y: 1.15, yaw: 3.14159 } },
     routes: { lap: [{ x: -0.8, y: 1.15, yaw: 3.14159 }, { x: 0.3, y: -1.0, yaw: -1.5708 }, { x: 0.5, y: 1.0, yaw: 3.14159 }] },
     exits: { slot_10: { x: 0, y: 0, yaw: 0 }, slot_11: { x: 0.5, y: 1.0, yaw: 3.14159 } },

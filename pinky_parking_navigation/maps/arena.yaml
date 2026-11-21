@@ -1,4 +1,4 @@
-# scripts/make_arena_sim.py 가 만든 임시 경기장 지도 (월드 arena.world 와 같은 좌표).
+# scripts/make_arena_sim.py 가 만든 경기장 지도 (월드 arena.world 와 같은 좌표).
 image: arena.pgm
 mode: trinary
 resolution: 0.02

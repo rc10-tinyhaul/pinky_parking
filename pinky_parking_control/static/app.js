@@ -1216,7 +1216,7 @@
       $('#show-room-label').hidden = !(isArena() && map);
       $('#layout-chip').textContent = isArena() ? '경기장' : '공장 월드';
       $('#field-title').textContent = isArena() ? '경기장' : '공장 월드';
-      $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '시뮬레이션 임시 배치 · 경기장 월드(#1) 전까지';
+      $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '공식 공장 월드 배치 (예전 기본)';
       if (document.fonts) document.fonts.ready.then(() => { layoutField(); drawField(); });
       layoutField();
       route();

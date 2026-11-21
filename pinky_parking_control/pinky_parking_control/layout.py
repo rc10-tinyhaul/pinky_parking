@@ -231,7 +231,7 @@ class FactoryLayout:
         raise NotInLayout('주유구역은 경기장 배치에서만 있습니다 (지금은 공장 월드)')
 
     def to_dict(self):
-        return {'kind': FACTORY, 'name': '공장 월드 (시뮬레이션 임시)', 'slots': self.slots,
+        return {'kind': FACTORY, 'name': '공장 월드 (예전 기본)', 'slots': self.slots,
                 'routes': self.routes, 'exits': self.exits, 'vehicles': self.vehicles}
 
 

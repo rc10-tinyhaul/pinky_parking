@@ -50,29 +50,17 @@
 
 | 순서 | 어디서 | 명령 | 왜 |
 |---|---|---|---|
-| 1 | 저장소 폴더 | `git switch henry/control-api` | 관제센터 브랜치로 바꿉니다 (`dev`에 합쳐진 뒤에는 필요 없음) |
-| 2 | 저장소 폴더 | `docker compose build` | 새 부품(FastAPI 등)을 설치합니다. 처음 한 번 |
-| 3 | 저장소 폴더 | `./run.sh` | 시뮬레이션 컨테이너에 들어갑니다 |
-| 4 | 컨테이너 안 | `colcon build --symlink-install --packages-up-to pinky_parking_control` | 관제 패키지를 설치합니다 |
-| 5 | 컨테이너 안 | `source install/setup.bash` | 설치한 것을 지금 터미널에 알립니다 |
-| 6 | 컨테이너 안 | `ros2 launch pinky_parking_bringup sim.launch.py` | 시뮬레이션 로봇을 켭니다 |
-| 7 | 새 터미널에서 `./run.sh` 후 | `source install/setup.bash` → `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 |
-| 8 | 그 PC 브라우저 | `http://localhost:8080` | 진짜 관제센터가 열립니다 (`?demo` 없이) |
+| 1 | 저장소 폴더 | `docker compose build` | 새 부품(FastAPI 등)을 설치합니다. 처음 한 번 |
+| 2 | 저장소 폴더 | `./run.sh` | 시뮬레이션 컨테이너에 들어갑니다 |
+| 3 | 컨테이너 안 | `colcon build --symlink-install --packages-up-to pinky_parking_control` | 관제 패키지를 설치합니다 |
+| 4 | 컨테이너 안 | `source install/setup.bash` | 설치한 것을 지금 터미널에 알립니다 |
+| 5 | 컨테이너 안 | `ros2 launch pinky_parking_bringup sim.launch.py` | 경기장에 시뮬레이션 로봇 두 대를 켭니다 |
+| 6 | 새 터미널에서 `./run.sh` 후 | `source install/setup.bash` → `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 |
+| 7 | 그 PC 브라우저 | `http://localhost:8080` | 진짜 관제센터가 열립니다 (`?demo` 없이) |
 
-- 위 6·7번은 공장 월드라서 공장 지도가 나옵니다. 경기장 위에서 돌리려면 아래 "임시 경기장 시뮬레이션"을 씁니다.
+#### 경기장 시뮬레이션
 
-#### 임시 경기장 시뮬레이션
-
-경기장 월드(#1)와 지도(#3)가 생기기 전까지, 도면 좌표(`config/arena.yaml`)로 만든 임시 경기장 월드(`pinky_parking_gazebo/worlds/arena.world`)와 지도(`pinky_parking_navigation/maps/arena`)를 씁니다. 로봇 목록은 `pinky_parking_bringup/config/robots_arena.yaml`입니다(월드 이름이 `arena.world`라 관제 화면이 자동으로 경기장이 됩니다).
-
-```bash
-# 컨테이너 안, 위 4·5번 뒤. 6번 대신:
-C=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml
-M=$PWD/install/pinky_parking_navigation/share/pinky_parking_navigation/maps/arena.yaml
-ros2 launch pinky_parking_bringup sim.launch.py robots:=$C map:=$M
-# 7번 대신 (새 터미널):
-ros2 launch pinky_parking_control control.launch.py robots:=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml
-```
+경기장 월드(`pinky_parking_gazebo/worlds/arena.world`)와 지도(`pinky_parking_navigation/maps/arena`)는 도면 좌표(`config/arena.yaml`)에서 만듭니다. 로봇 목록은 `pinky_parking_bringup/config/robots.yaml`이고, 월드 이름이 `arena.world`라 관제 화면이 자동으로 경기장이 됩니다.
 
 - 테이프·주차 칸·주유구역은 바닥 그림이라 라이다에 안 보입니다. 위치 추정(AMCL)이 되도록 바닥 바깥에 낮은 벽과 블록을 둘렀습니다. 실물 경기장에는 없는 것입니다.
 - `arena.yaml`을 고치면 `python3 scripts/make_arena_sim.py`로 월드와 지도를 다시 만들고 colcon build 합니다.
@@ -90,10 +78,10 @@ ros2 launch pinky_parking_control control.launch.py robots:=$PWD/install/pinky_p
 
 | 배치 | 언제 | 좌표 |
 |---|---|---|
-| **경기장** | 임시 경기장 시뮬레이션, 경기장 월드(#1)가 생긴 뒤, 데모 화면 | `config/arena.yaml` (팀 도면 2000 × 2000 mm를 옮긴 값) |
-| **공장 월드** | 지금 시뮬레이션 (공식 공장 월드) | `slots.yaml`, `route.yaml`, `maps/factory` |
+| **경기장** | 기본. 시뮬레이션, 실물, 데모 화면 | `config/arena.yaml` (팀 도면 2000 × 2000 mm를 옮긴 값) |
+| **공장 월드** | 공식 공장 월드로 띄웠을 때(예전 기본, 지금은 관리하지 않음) | `slots.yaml`, `route.yaml` (지금은 경기장 값), `maps/factory` |
 
-`config/control.yaml`의 `layout: auto`가 `robots.yaml`의 월드 이름을 보고 고릅니다. 이름에 `factory`가 있으면 공장 월드, 아니면 경기장입니다. 그래서 경기장 월드가 생기면 `robots.yaml`만 바꿔도 자동으로 경기장이 됩니다. 직접 고르려면 `--layout arena` 또는 `--layout factory`를 씁니다.
+`config/control.yaml`의 `layout: auto`가 `robots.yaml`의 월드 이름을 보고 고릅니다. 이름에 `factory`가 있으면 공장 월드, 아니면 경기장입니다. 직접 고르려면 `--layout arena` 또는 `--layout factory`를 씁니다.
 
 경기장 도면 좌표 (원점 = 트랙 타원 중심, 단위 m, 반시계 주행):
 
@@ -206,16 +194,16 @@ ros2 launch pinky_parking_control control.launch.py robots:=$PWD/install/pinky_p
 | `config/control.yaml` | 포트, 배치(`layout`), 처음 차종, 직접 운전 속도 제한, 행동별 제한 시간, 공장 월드 출차 위치 |
 | `config/arena.yaml` | 경기장 도면 좌표: 트랙, 주차 칸, 출차 위치, 주유구역, 대기선, 차종 |
 | `config/scenario.yaml` | 시연 단계와 유닛 이름(A, B) |
-| `pinky_parking_bringup/config/robots.yaml` 외 | 로봇 목록, 공장 월드의 칸·경로·지도 (그대로 읽음) |
+| `pinky_parking_bringup/config/robots.yaml` 외 | 로봇 목록과 시작 자리, 공장 배치의 칸·경로·지도 (그대로 읽음) |
 
-`arena.yaml`은 경기장 월드(#1)·지도(#3)가 생기면 그 좌표와 맞춰 보고, 기본 설정 전환(#4) 때 알맞은 패키지로 옮깁니다.
+`arena.yaml`은 경기장 좌표의 원본입니다. 경기장 월드와 지도(`scripts/make_arena_sim.py`), `park`·`lap` 명령의 칸·경로(`slots.yaml`, `route.yaml`)가 이 값을 따릅니다. 고치면 월드와 지도를 다시 만들고 두 파일도 맞춥니다.
 
 ## 확인
 
 | 명령 | 무엇을 확인하나요 |
 |---|---|
 | `colcon test --packages-select pinky_parking_control && colcon test-result` | 코드 스타일과 단위 시험 19개 (경기장 좌표, 행동, 시나리오 전체 흐름, API 응답, 비밀번호) |
-| `src/pinky_parking/scripts/control_smoke_test.sh` | 시뮬레이션을 켜고 API로 pinky1 주차, pinky2 주행을 보내 둘 다 성공하는지. 마지막 줄 "CONTROL SMOKE TEST PASSED" |
+| `src/pinky_parking/scripts/smoke_test.sh` | 경기장 시뮬레이션을 켜고 관제 API로 시연 시나리오 1·2단계(출차, 트랙 한 바퀴, 차선 변경)와 제자리 주차를 돌려 모두 성공하는지. 마지막 줄 "SMOKE TEST PASSED" |
 
 ## 파일
 

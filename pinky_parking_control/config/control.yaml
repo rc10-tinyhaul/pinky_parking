@@ -3,9 +3,8 @@ host: 0.0.0.0
 port: 8080
 status_rate_hz: 10        # 대시보드로 상태를 보내는 주기 (WebSocket)
 
-# 배치: arena (경기장 도면, config/arena.yaml) | factory (지금 시뮬레이션의 공장 월드) | auto
+# 배치: arena (경기장 도면, config/arena.yaml) | factory (공식 공장 월드, 예전 기본) | auto
 # auto 는 robots.yaml 의 world_name 으로 고른다: 이름에 factory 가 있으면 공장, 아니면 경기장.
-# 경기장 월드(#1)가 생기면 robots.yaml 만 바꿔도 자동으로 경기장이 된다.
 layout: auto
 
 # 로봇별 처음 차종 (T00 트레일러 없음, T10 10 cm, T15 15 cm). 대시보드나 API 로 바꿀 수 있다.
@@ -28,8 +27,7 @@ timeout_s:
   lane_change: 120
   fuel: 180
 
-# 공장 월드에서 출차할 때 칸에서 나가 설 위치 (map 좌표). 경기장은 arena.yaml 의 exits.
-# 출차 명령(#9)이 생기기 전까지 쓰는 임시 값으로, 공식 공장 월드에서 각 로봇의 시작 위치다.
+# 공장 배치에서 출차할 때 칸에서 나가 설 위치 (map 좌표). 경기장은 arena.yaml 의 exits 를 쓴다.
 unpark_exits:
   slot_10: {x: 0.0, y: 0.0, yaw: 0.0}
   slot_11: {x: 0.5, y: 1.0, yaw: 3.14159}
