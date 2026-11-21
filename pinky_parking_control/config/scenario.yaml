@@ -47,6 +47,9 @@ steps:
       - {robot: A, do: confirm, text: "A에 15 cm 트레일러를 달았나요?"}
       - {robot: A, do: vehicle, type: T15}
       - {robot: A, do: fuel, step: leave}
+      # 2번 트랙 왼쪽 아래 곡선(-135°)으로 비켜 선다. 주유구역에서 나오는 자리(leave)는 두 대가 같아서,
+      # A 가 거기 서 있으면 B 가 A 옆에 붙어 서고 주차 칸으로 가는 경로를 못 짠다.
+      - {robot: A, do: goto, x: -0.4207, y: -0.7207, yaw: -0.7854}
 
   - title: B 주유 후 제자리 주차
     detail: B가 주유구역에 들어갔다 나와 10번 칸으로
