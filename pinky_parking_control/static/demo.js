@@ -55,7 +55,7 @@ window.PinkyDemo = (() => {
   let nextId = 7;
 
   const start = LAYOUT.kind === 'arena'
-    ? { pinky1: { x: 0, y: 0.15, yaw: PI2 }, pinky2: { x: 0, y: -0.15, yaw: PI2 } }
+    ? { pinky1: { x: 0, y: 0.15, yaw: PI2 }, pinky2: { x: 0, y: -0.20, yaw: -PI2 } }
     : { pinky1: { x: 0, y: 0, yaw: 0 }, pinky2: { x: 0.5, y: 1.0, yaw: 3.14159 } };
   const robots = {
     pinky1: { name: 'pinky1', domain_id: 11, callsign: 'A', vehicle: 'T00', pose: { ...start.pinky1 }, v: 0, w: 0, task: null, teleop: 0 },
