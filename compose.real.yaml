@@ -8,3 +8,7 @@ services:
     network_mode: host
     ipc: host          # ROS 2(Fast DDS)의 공유 메모리 통신을 호스트의 ROS 프로세스와도 맞춘다
     ports: !reset []   # 호스트 네트워크에서는 포트 연결이 필요 없고 함께 쓸 수도 없다
+    environment:
+      # 공유기가 멀티캐스트를 막아 로봇이 안 보일 때: 호스트에서 로봇 IP 를 적어 넘긴다
+      #   ROS_STATIC_PEERS=192.168.204.50 PINKY_NETWORK=host ./run.sh
+      - ROS_STATIC_PEERS=${ROS_STATIC_PEERS:-}
