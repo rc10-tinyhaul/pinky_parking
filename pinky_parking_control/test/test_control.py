@@ -180,13 +180,23 @@ def test_arena_fits_board_like_drawing():
 
 
 def test_arena_actions_make_waypoints(arena):
-    lap = arena.drive('pinky1', 1)
-    assert lap.target == '1번 트랙' and len(lap.poses) == 12
-    assert math.isclose(lap.poses[-1]['x'], 0.405, abs_tol=0.01)   # 한 바퀴 돌아 제자리
+    lap = arena.drive('pinky1', 1)                         # 이어진 경로 하나 (follow_path)
+    track = Stadium(0.405, 0.6)
+    assert lap.target == '1번 트랙' and lap.mode == 'path' and len(lap.poses) > 100
+    assert all(track.nearest(p['x'], p['y'])[1] < 0.01 for p in lap.poses)
+    steps = [math.hypot(b['x'] - a['x'], b['y'] - a['y'])
+             for a, b in zip(lap.poses, lap.poses[1:])]
+    assert max(steps) < 0.04                               # 끊긴 데 없이 촘촘하다
+    start, end = lap.poses[0], lap.poses[-1]               # 출발점 조금 앞에서 끝난다 (끝 ≠ 시작)
+    assert 0.1 < math.hypot(end['x'] - start['x'], end['y'] - start['y']) < 0.2
     arena.cancel('pinky1')
-    change = arena.lane_change('pinky1', 2)
-    assert len(change.poses) == 2
-    assert all(Stadium(0.595, 0.6).nearest(p['x'], p['y'])[1] < 0.01 for p in change.poses)
+    change = arena.lane_change('pinky1', 2)                # 1번 → 2번 트랙으로 매끄럽게
+    assert change.mode == 'path'
+    assert track.nearest(change.poses[0]['x'], change.poses[0]['y'])[1] < 0.01
+    assert Stadium(0.595, 0.6).nearest(change.poses[-1]['x'], change.poses[-1]['y'])[1] < 0.01
+    turns = [abs(math.atan2(math.sin(b['yaw'] - a['yaw']), math.cos(b['yaw'] - a['yaw'])))
+             for a, b in zip(change.poses, change.poses[1:])]
+    assert max(turns) < 0.2                                # 꺾이는 곳 없이 방향이 조금씩 바뀐다
     arena.cancel('pinky1')
     assert arena.fuel('pinky1', 'wait').poses[0]['y'] == pytest.approx(0.17)
     arena.cancel('pinky1')
@@ -286,6 +296,43 @@ def test_scenario_runs_plan_in_order():
         fleet.close()
 
 
+def test_scenario_skips_robot_that_is_not_connected():
+    """한 대만 연결해도(A) 시나리오가 끝까지 간다: B 의 행동과 B 만 있는 단계는 건너뛴다."""
+    fleet = Fleet(ROBOTS[:1], ArenaLayout(read_yaml('arena.yaml')), CONFIG, AutoLink, CALLSIGNS)
+    runner = ScenarioRunner(fleet, read_yaml('scenario.yaml'), poll_s=0.01)
+    try:
+        runner.start(run_all=True)
+        for _ in range(100):
+            runner.wait(0.05)
+            if runner.waiting:
+                break
+        runner.confirm()
+        runner.wait(5)
+        steps = runner.status()['steps']
+        assert all(s['state'] in ('done', 'skipped') for s in steps)
+        assert steps[0]['state'] == 'done' and 'B 없음' in steps[0]['note']      # A 는 하고 B 만 빠짐
+        assert steps[4]['state'] == 'skipped' and 'B 없음' in steps[4]['note']   # B 만 있는 단계
+        assert steps[8]['state'] == 'done' and steps[8]['note'] == ''
+        assert [t['robot'] for t in fleet.log.recent(50)].count('pinky2') == 0
+    finally:
+        runner.stop()
+        fleet.close()
+
+
+def test_trajectory_file_is_saved(tmp_path):
+    """작업이 끝나면 계획 경로와 실제 궤적을 파일로 남긴다."""
+    import json
+    from pinky_parking_control.model import save_trajectory
+    task = Task(robot='pinky1', action='drive', target='1번 트랙', mode='path', timeout_s=10,
+                poses=[{'x': 0.0, 'y': 0.0, 'yaw': 0.0}, {'x': 0.1, 'y': 0.0, 'yaw': 0.0}])
+    task.trail.append([0.1, 0.0, 0.0, 0.0, 0.1, 0.0])
+    task.finish(SUCCEEDED)
+    data = json.loads(save_trajectory(task, tmp_path / 'trajectories').read_text())
+    assert data['action'] == 'drive' and data['state'] == 'succeeded'
+    assert len(data['planned']) == 2 and data['actual'] == [[0.1, 0.0, 0.0, 0.0, 0.1, 0.0]]
+    assert data['actual_columns'] == ['t', 'x', 'y', 'yaw', 'v', 'w']
+
+
 # ---- 지도 -------------------------------------------------------------------
 def test_pgm_and_classify():
     data = b'P5\n# comment\n3 1\n255\n' + bytes([0, 254, 205])
@@ -357,3 +404,41 @@ def test_team_password(factory):
     reply = client.post('/api/robots/pinky1/park', json={'slot': 'slot_10'}, headers=ok)
     assert reply.status_code == 200
     assert client.post('/api/stop').status_code == 200   # 멈추기는 언제나 된다
+
+
+# ---- 주행 설정, SLAM 지도, 라이다 점 ------------------------------------------
+def test_tuning_clean_and_nav2_parameters():
+    from pinky_parking_control import tuning
+    assert tuning.clean({'speed': 9, 'lookahead': '0.2'}) == {'speed': 0.25, 'lookahead': 0.2}
+    for bad in ({'warp': 1}, {'speed': 'fast'}, {'speed': float('nan')}):
+        with pytest.raises(ValueError):
+            tuning.clean(bad)
+    params = tuning.nav2_parameters({'speed': 0.1, 'turn': 0.8, 'lookahead': 0.2})
+    assert params['controller_server']['FollowPath.desired_linear_vel'] == 0.1
+    assert params['controller_server']['FollowPath.min_lookahead_dist'] == 0.2
+    assert params['velocity_smoother']['max_velocity'] == [0.125, 0.0, 0.8]
+    assert tuning.nav2_parameters({'goal_tolerance': 0.05}) == {
+        'controller_server': {'general_goal_checker.xy_goal_tolerance': 0.05}}
+    assert {t['key'] for t in tuning.describe({})} == set(tuning.SETTINGS)
+
+
+def test_fleet_tuning_changes_teleop_limit_and_lane_status(arena):
+    reply = arena.set_tuning({'teleop_linear': 0.05, 'speed': 0.12})
+    values = {t['key']: t['value'] for t in reply['values']}
+    assert values['teleop_linear'] == 0.05 and values['speed'] == 0.12
+    assert arena.teleop('pinky1', 1.0, 0.0)['linear'] == 0.05      # 감도를 낮추면 직접 운전도 느려진다
+    lane = arena.robot('pinky1')['lane']                            # FakeLink 는 1번 트랙 위에 있다
+    assert lane['track'] == 1 and lane['offset'] < 0.005
+
+
+def test_scan_points_and_grid_encoding():
+    from types import SimpleNamespace
+    from pinky_parking_control.mapdata import encode_grid
+    from pinky_parking_control.mapdata import scan_points
+    # 로봇이 원점에서 +x 를 본다. 라이다는 180° 돌아 있어 각도 0 의 빛은 로봇 뒤(-x)로 나간다
+    pts = scan_points([1.0, float('inf'), 0.01], 0.0, math.pi, 8.0, {'x': 0, 'y': 0, 'yaw': 0})
+    assert len(pts) == 1 and pts[0][0] == pytest.approx(-1.017, abs=1e-3)
+    info = SimpleNamespace(width=2, height=2, resolution=0.05,
+                           origin=SimpleNamespace(position=SimpleNamespace(x=-1.0, y=-2.0)))
+    grid = encode_grid(SimpleNamespace(info=info, data=[0, 100, -1, 0]))   # 아랫줄부터 온다
+    assert grid['cells'] == 'uf' + 'fo' and grid['origin'] == {'x': -1.0, 'y': -2.0}

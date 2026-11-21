@@ -5,6 +5,7 @@ Nav2 액션(navigate_to_pose, follow_waypoints)과 /tf 는 도메인을 건너�
 관제 서버는 로봇마다 그 도메인의 Context 를 따로 만들어 직접 붙는다.
 한 프로세스 안에서 도메인 11, 12 … 에 동시에 참여한다.
 """
+from collections import deque
 import threading
 import time
 
@@ -12,9 +13,14 @@ from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist
+from nav2_msgs.action import FollowPath
 from nav2_msgs.action import FollowWaypoints
 from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
+from nav_msgs.msg import Path
+from pinky_parking_control.mapdata import encode_grid
+from pinky_parking_control.mapdata import scan_points
 from pinky_parking_control.model import CANCELED
 from pinky_parking_control.model import FAILED
 from pinky_parking_control.model import NotReady
@@ -22,19 +28,31 @@ from pinky_parking_control.model import quaternion_to_yaw
 from pinky_parking_control.model import SUCCEEDED
 from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import yaw_to_quaternion
+from rcl_interfaces.msg import Parameter
+from rcl_interfaces.msg import ParameterType
+from rcl_interfaces.msg import ParameterValue
+from rcl_interfaces.srv import GetParameters
+from rcl_interfaces.srv import SetParameters
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Float32
+from tf2_msgs.msg import TFMessage
 
 # AMCL 은 amcl_pose 를 transient_local 로 낸다: 늦게 붙어도 마지막 위치를 받는다
 AMCL_QOS = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                       durability=DurabilityPolicy.TRANSIENT_LOCAL)
 POSE_FRESH_S = 5.0   # 이보다 오래된 위치는 '위치 모름'으로 본다
+LATCHED = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                     durability=DurabilityPolicy.TRANSIENT_LOCAL)
+SLAM_FRAME = 'slam'          # localization:=slam 일 때 SLAM 지도의 프레임 (map -> slam 은 고정 변환)
 
 
 def pose_stamped(pose):
@@ -60,6 +78,12 @@ class RobotLink:
         self.pose, self.pose_time = None, 0.0
         self.teleop_time = 0.0   # 마지막 직접 운전 명령 시각 (0 = 직접 운전 아님)
         self.speed = {'linear': 0.0, 'angular': 0.0}
+        self.battery_v = None
+        self.camera_url = None                    # 실물 로봇의 카메라 영상 주소 (서버 설정)
+        self.slam_map, self.slam_seq = None, 0    # SLAM 지도 (localization:=slam 일 때)
+        self.slam_tf = None                       # map -> slam 고정 변환 {x, y, yaw}
+        self.scan = None                          # 마지막 라이다 스캔
+        self._stamps = {'odom': deque(maxlen=40), 'scan': deque(maxlen=20)}   # 수신 시각 (Hz 계산)
 
         self.context = Context()
         rclpy.init(context=self.context, domain_id=self.domain_id)
@@ -67,10 +91,18 @@ class RobotLink:
         self.node.create_subscription(
             PoseWithCovarianceStamped, 'amcl_pose', self._on_pose, AMCL_QOS)
         self.node.create_subscription(Odometry, 'odom', self._on_odom, 10)
+        # 실물 로봇의 배터리 전압 (공식 battery_publisher). 시뮬레이션에는 없어 None 으로 남는다
+        self.node.create_subscription(Float32, 'battery/voltage', self._on_battery, 1)
+        self.node.create_subscription(OccupancyGrid, '/slam_map', self._on_slam_map, LATCHED)
+        self.node.create_subscription(TFMessage, '/tf_static', self._on_tf_static, LATCHED)
+        self.node.create_subscription(LaserScan, 'scan', self._on_scan, qos_profile_sensor_data)
+        self.initialpose = self.node.create_publisher(PoseWithCovarianceStamped, 'initialpose', 1)
+        self.param_clients = {}                   # (노드, set|get) → 서비스 클라이언트
         self.cmd_vel = self.node.create_publisher(Twist, 'cmd_vel', 10)
         self.clients = {
             'pose': ActionClient(self.node, NavigateToPose, 'navigate_to_pose'),
             'waypoints': ActionClient(self.node, FollowWaypoints, 'follow_waypoints'),
+            'path': ActionClient(self.node, FollowPath, 'follow_path'),
         }
         self.executor = SingleThreadedExecutor(context=self.context)
         self.executor.add_node(self.node)
@@ -91,11 +123,39 @@ class RobotLink:
         with self._lock:
             self.pose = {'x': p.x, 'y': p.y, 'yaw': quaternion_to_yaw(q.x, q.y, q.z, q.w)}
             self.pose_time = time.time()
+            task = self.task
+            if task is not None and not task.done:      # 궤적 기록 (보정·분석용)
+                row = [self.pose_time - task.started, p.x, p.y, self.pose['yaw'],
+                       self.speed['linear'], self.speed['angular']]
+                task.trail.append([round(v, 4) for v in row])
 
     def _on_odom(self, msg):
         twist = msg.twist.twist
         with self._lock:
             self.speed = {'linear': twist.linear.x, 'angular': twist.angular.z}
+            self._stamps['odom'].append(time.time())
+
+    def _on_slam_map(self, msg):
+        grid = encode_grid(msg)
+        with self._lock:
+            self.slam_map, self.slam_seq = grid, self.slam_seq + 1
+
+    def _on_tf_static(self, msg):
+        for t in msg.transforms:
+            if t.header.frame_id == 'map' and t.child_frame_id == SLAM_FRAME:
+                q = t.transform.rotation
+                with self._lock:
+                    self.slam_tf = {'x': t.transform.translation.x, 'y': t.transform.translation.y,
+                                    'yaw': quaternion_to_yaw(q.x, q.y, q.z, q.w)}
+
+    def _on_scan(self, msg):
+        with self._lock:
+            self.scan = msg
+            self._stamps['scan'].append(time.time())
+
+    def _on_battery(self, msg):
+        with self._lock:
+            self.battery_v = float(msg.data)
 
     def _on_feedback(self, task, feedback_msg):
         feedback = feedback_msg.feedback
@@ -104,6 +164,8 @@ class RobotLink:
                 return
             if hasattr(feedback, 'distance_remaining'):
                 task.distance_remaining = feedback.distance_remaining
+            if hasattr(feedback, 'distance_to_goal'):       # follow_path
+                task.distance_remaining = feedback.distance_to_goal
             if hasattr(feedback, 'current_waypoint'):
                 task.waypoint_index = int(feedback.current_waypoint)
 
@@ -149,8 +211,13 @@ class RobotLink:
         return self.clients['pose'].server_is_ready()
 
     def start(self, task):
-        """task.poses 가 하나면 navigate_to_pose, 여럿이면 follow_waypoints."""
-        kind = 'pose' if len(task.poses) == 1 else 'waypoints'
+        """
+        작업을 Nav2 에 보낸다.
+
+        task.mode 가 'path' 면 poses 를 이어진 경로로 보고 follow_path (멈추지 않고 따라간다).
+        아니면 poses 가 하나일 때 navigate_to_pose, 여럿일 때 follow_waypoints (점마다 도착 판정).
+        """
+        kind = task.mode or ('pose' if len(task.poses) == 1 else 'waypoints')
         client = self.clients[kind]
         with self._lock:
             if self.task is not None and not self.task.done:
@@ -161,6 +228,12 @@ class RobotLink:
         if kind == 'pose':
             goal = NavigateToPose.Goal()
             goal.pose = pose_stamped(task.poses[0])
+        elif kind == 'path':
+            goal = FollowPath.Goal()
+            goal.path = Path()
+            goal.path.header.frame_id = 'map'
+            goal.path.poses = [pose_stamped(p) for p in task.poses]
+            goal.controller_id, goal.goal_checker_id = 'FollowPath', 'general_goal_checker'
         else:
             goal = FollowWaypoints.Goal()
             goal.poses = [pose_stamped(p) for p in task.poses]
@@ -209,6 +282,90 @@ class RobotLink:
         if stale:
             self.cmd_vel.publish(Twist())
 
+    # ---- 진단·설정 (API 스레드) ----------------------------------------
+    def _rate(self, key, now):
+        """최근 2초 동안 받은 주기 [Hz]. 끊겼으면 0."""
+        recent = [t for t in self._stamps[key] if now - t < 2.0]
+        return round(len(recent) / 2.0, 1)
+
+    def slam_view(self):
+        """SLAM 지도와 map -> slam 변환. 없으면 None."""
+        with self._lock:
+            if self.slam_map is None:
+                return None
+            return {**self.slam_map, 'seq': self.slam_seq,
+                    'transform': dict(self.slam_tf or {'x': 0.0, 'y': 0.0, 'yaw': 0.0})}
+
+    def scan_view(self):
+        """지금 라이다가 보는 점들 (지도 좌표)."""
+        with self._lock:
+            scan, pose = self.scan, dict(self.pose) if self.pose else None
+        if scan is None or pose is None:
+            return {'points': []}
+        return {'points': scan_points(scan.ranges, scan.angle_min, scan.angle_increment,
+                                      min(scan.range_max, 8.0), pose)}
+
+    def set_pose(self, pose):
+        """로봇에게 '지금 여기 있다'고 알려 준다 (initialpose: AMCL, odom_localizer 가 받는다)."""
+        msg = PoseWithCovarianceStamped()
+        msg.header.frame_id = 'map'
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.pose.pose = pose_stamped(pose).pose
+        msg.pose.covariance[0] = msg.pose.covariance[7] = 0.01
+        msg.pose.covariance[35] = 0.01
+        self.initialpose.publish(msg)
+
+    def _param_client(self, node_name, kind):
+        key = (node_name, kind)
+        if key not in self.param_clients:
+            srv = SetParameters if kind == 'set' else GetParameters
+            self.param_clients[key] = self.node.create_client(
+                srv, f'/{node_name}/{kind}_parameters')
+        return self.param_clients[key]
+
+    def set_nav2_parameters(self, by_node):
+        """{노드: {파라미터: 값}} 을 Nav2 에 보낸다 (달리는 중에도 적용). 보낸 노드 이름을 돌려준다."""
+        sent = []
+        for node_name, params in by_node.items():
+            client = self._param_client(node_name, 'set')
+            if not client.service_is_ready():
+                continue
+            request = SetParameters.Request()
+            for name, value in params.items():
+                if isinstance(value, (list, tuple)):
+                    pv = ParameterValue(type=ParameterType.PARAMETER_DOUBLE_ARRAY,
+                                        double_array_value=[float(v) for v in value])
+                else:
+                    pv = ParameterValue(type=ParameterType.PARAMETER_DOUBLE,
+                                        double_value=float(value))
+                request.parameters.append(Parameter(name=name, value=pv))
+            client.call_async(request)
+            sent.append(node_name)
+        return sent
+
+    def get_nav2_parameters(self, sources, timeout_s=1.0):
+        """{키: (노드, 파라미터)} 의 지금 값을 읽는다. 못 읽은 키는 빠진다."""
+        by_node = {}
+        for key, (node_name, param) in sources.items():
+            by_node.setdefault(node_name, []).append((key, param))
+        out, waiting = {}, []
+        for node_name, items in by_node.items():
+            client = self._param_client(node_name, 'get')
+            if not client.service_is_ready():
+                continue
+            done = threading.Event()
+            future = client.call_async(GetParameters.Request(names=[p for _, p in items]))
+            future.add_done_callback(lambda _f, d=done: d.set())
+            waiting.append((items, future, done))
+        deadline = time.time() + timeout_s
+        for items, future, done in waiting:
+            if not done.wait(max(0.0, deadline - time.time())) or future.result() is None:
+                continue
+            for (key, _), value in zip(items, future.result().values):
+                if value.type == ParameterType.PARAMETER_DOUBLE:
+                    out[key] = value.double_value
+        return out
+
     def status(self):
         now = time.time()
         with self._lock:
@@ -221,6 +378,9 @@ class RobotLink:
                 'pose_age_s': round(now - self.pose_time, 1) if self.pose else None,
                 'speed': {k: round(v, 3) for k, v in self.speed.items()},
                 'teleop': bool(self.teleop_time),
+                'battery_v': round(self.battery_v, 2) if self.battery_v is not None else None,
+                'odom_hz': self._rate('odom', now), 'scan_hz': self._rate('scan', now),
+                'slam_seq': self.slam_seq, 'camera_url': self.camera_url,
                 'task': self.task.to_dict(now) if self.task else None,
             }
 

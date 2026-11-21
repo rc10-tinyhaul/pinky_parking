@@ -6,18 +6,18 @@ callsigns: {A: pinky1, B: pinky2}
 
 steps:
   - title: 주차 구역에서 시작
-    detail: A(트레일러 없음)는 10번, B(10 cm)는 11번 칸에 선다
+    detail: A(트레일러 없음)는 11번, B(10 cm)는 10번 칸에 선다
     actions:
       - {robot: A, do: vehicle, type: T00}
       - {robot: B, do: vehicle, type: T10}
-      - {robot: A, do: park, slot: slot_10}
-      - {robot: B, do: park, slot: slot_11}
+      - {robot: A, do: park, slot: slot_11}
+      - {robot: B, do: park, slot: slot_10}
 
   - title: 1바퀴 직진
     detail: A는 1번 트랙, B는 2번 트랙을 한 바퀴
     actions:
-      - {robot: A, do: unpark, slot: slot_10}
-      - {robot: B, do: unpark, slot: slot_11}
+      - {robot: A, do: unpark, slot: slot_11}
+      - {robot: B, do: unpark, slot: slot_10}
       - {robot: A, do: drive, track: 1}
       - {robot: B, do: lane_change, to: 2}
       - {robot: B, do: drive, track: 2}
@@ -46,17 +46,17 @@ steps:
       - {robot: A, do: fuel, step: leave}
 
   - title: B 주유 후 제자리 주차
-    detail: B가 주유구역에 들어갔다 나와 11번 칸으로
+    detail: B가 주유구역에 들어갔다 나와 10번 칸으로
     actions:
       - {robot: B, do: fuel, step: enter}
       - {robot: B, do: fuel, step: leave}
-      - {robot: B, do: park, slot: slot_11}
+      - {robot: B, do: park, slot: slot_10}
 
   - title: A(15 cm) 2번 트랙 1바퀴
     actions:
       - {robot: A, do: drive, track: 2}
 
   - title: A 주차하고 종료
-    detail: A(15 cm)는 10번, B(10 cm)는 11번 칸에서 끝
+    detail: A(15 cm)는 11번, B(10 cm)는 10번 칸에서 끝
     actions:
-      - {robot: A, do: park, slot: slot_10}
+      - {robot: A, do: park, slot: slot_11}

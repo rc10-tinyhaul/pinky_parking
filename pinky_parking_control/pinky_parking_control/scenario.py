@@ -134,9 +134,18 @@ class ScenarioRunner:
             self.states[i], self.notes[i] = SKIPPED, f'건너뜀: {step["pending"]} 준비 중'
             return True
         self.states[i], self.notes[i] = RUNNING, ''
-        queues = {}
+        queues, absent = {}, []
         for action in step.get('actions') or []:
-            queues.setdefault(action.get('robot'), []).append(action)
+            sign = action.get('robot')
+            if self.callsigns.get(sign, sign) not in self.fleet.links:
+                if sign not in absent:       # 연결하지 않은 로봇(예: 한 대만 시험)의 행동은 건너뛴다
+                    absent.append(sign)
+                continue
+            queues.setdefault(sign, []).append(action)
+        missing = f'{", ".join(str(s) for s in absent)} 없음: 그 행동은 건너뜀' if absent else ''
+        if absent and not queues:
+            self.states[i], self.notes[i] = SKIPPED, missing
+            return True
         results = {}
         workers = [threading.Thread(target=self._run_queue, args=(sign, q, results), daemon=True)
                    for sign, q in queues.items()]
@@ -151,7 +160,7 @@ class ScenarioRunner:
         if failures:
             self.states[i], self.notes[i] = FAILED, failures[0]
             return False
-        self.states[i] = DONE
+        self.states[i], self.notes[i] = DONE, missing
         return True
 
     def _run_queue(self, sign, actions, results):

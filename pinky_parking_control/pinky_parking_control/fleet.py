@@ -13,10 +13,13 @@
 import threading
 import time
 
+from pinky_parking_control import tuning
 from pinky_parking_control.layout import NotInLayout
 from pinky_parking_control.model import NotYet
 from pinky_parking_control.model import parse_pose
+from pinky_parking_control.model import save_trajectory
 from pinky_parking_control.model import Task
+from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import TaskLog
 
 # 기획에는 있지만 아직 없는 기능: 화면과 API 에 자리만 두고 "준비 중"으로 답한다
@@ -50,9 +53,15 @@ class Fleet:
         self.max_linear = float(teleop.get('max_linear', 0.15))
         self.max_angular = float(teleop.get('max_angular', 1.2))
         self.log = TaskLog()
-        self.links = {r['name']: link_factory(r['name'], r['domain_id'], self.log.add)
+        self.trajectory_dir = config.get('trajectory_dir') or ''
+        self.tuning = {}                 # 관제 화면에서 바꾼 주행 설정 (바꾼 것만)
+        self.cameras = dict(config.get('cameras') or {})   # 로봇 이름 → 카메라 영상 주소
+        self.links = {r['name']: link_factory(r['name'], r['domain_id'], self._finished)
                       for r in robots}
         names = list(self.links)
+        for name, url in self.cameras.items():
+            if name in self.links:
+                self.links[name].camera_url = url
         self.callsigns = {name: sign for sign, name in (callsigns or {}).items() if name in names}
         defaults = config.get('vehicles') or {}
         self.vehicle = {n: defaults.get(n, 'T00') for n in names}
@@ -72,10 +81,19 @@ class Fleet:
             raise UnknownName(f'없는 {kind}입니다: {key} (있는 {kind}: {", ".join(table)})')
         return table[key]
 
-    def _start(self, name, action, target, poses):
+    def _start(self, name, action, target, poses, mode=''):
         link = self._link(name)
         return link.start(Task(robot=name, action=action, target=target, poses=poses,
-                               timeout_s=self.timeouts[action]))
+                               timeout_s=self.timeouts[action], mode=mode))
+
+    def _finished(self, task):
+        """작업이 끝나면 기록에 넣고, 궤적 폴더가 정해져 있으면 궤적 파일을 남긴다."""
+        self.log.add(task)
+        if self.trajectory_dir:
+            try:
+                save_trajectory(task, self.trajectory_dir)
+            except OSError as error:      # 기록 실패가 로봇 제어를 막지 않게
+                print(f'궤적을 저장하지 못했습니다: {error}')
 
     def _pose(self, name):
         return self._link(name).status().get('pose')
@@ -111,12 +129,12 @@ class Fleet:
 
     # ---- 주행 ----------------------------------------------------------
     def drive(self, name, track, laps=1):
-        poses = self.layout.drive(track, self._pose(name), laps)
-        return self._start(name, 'drive', f'{track}번 트랙', poses)
+        poses = self.layout.drive_path(track, self._pose(name), laps)
+        return self._start(name, 'drive', f'{track}번 트랙', poses, mode='path')
 
     def lane_change(self, name, to_track):
-        poses = self.layout.lane_change(to_track, self._pose(name))
-        return self._start(name, 'lane_change', f'{to_track}번 트랙으로', poses)
+        poses = self.layout.lane_change_path(to_track, self._pose(name))
+        return self._start(name, 'lane_change', f'{to_track}번 트랙으로', poses, mode='path')
 
     def lap(self, name, route):
         routes = getattr(self.layout, 'routes', {})
@@ -139,6 +157,53 @@ class Fleet:
         kind = self.vehicle[name]
         return {'type': kind, **self.layout.vehicles.get(kind, {})}
 
+    # ---- 위치 다시 맞추기 ----------------------------------------------
+    def set_pose(self, name, pose=None, slot=None):
+        """로봇을 손으로 옮겨 놓은 뒤 '지금 여기 있다'고 알려 준다. slot 이면 그 주차 칸 가운데."""
+        link = self._link(name)
+        if link.task is not None and not link.task.done:
+            raise TaskBusy(f'{name} 은(는) 작업 중입니다. 먼저 멈추세요')
+        target = self._pick(self.layout.slots, slot, '주차 칸') if slot else parse_pose(pose)
+        link.set_pose(target)
+        return {'robot': name, 'pose': target}
+
+    # ---- 주행 설정 (속도, 감도) ----------------------------------------
+    def tuning_view(self):
+        """지금 설정. 화면에서 아직 안 바꾼 값은 Nav2 에서 읽어 온다 (못 읽으면 기본값)."""
+        values = {'teleop_linear': self.max_linear, 'teleop_angular': self.max_angular}
+        for link in self.links.values():
+            if hasattr(link, 'get_nav2_parameters'):
+                values.update(link.get_nav2_parameters(tuning.NAV2_SOURCES))
+                break
+        values.update(self.tuning)
+        return tuning.describe(values)
+
+    def set_tuning(self, changes):
+        """설정을 바꿔 모든 로봇의 Nav2 에 바로 적용한다. 속도와 회전은 함께 다시 보낸다."""
+        cleaned = tuning.clean(changes)
+        self.tuning.update(cleaned)
+        if 'teleop_linear' in cleaned:
+            self.max_linear = cleaned['teleop_linear']
+        if 'teleop_angular' in cleaned:
+            self.max_angular = cleaned['teleop_angular']
+        current = {item['key']: item['value'] for item in tuning.describe(self.tuning)}
+        if 'speed' in cleaned or 'turn' in cleaned:
+            cleaned = {**cleaned, 'speed': current['speed'], 'turn': current['turn']}
+        by_node = tuning.nav2_parameters({k: v for k, v in cleaned.items()
+                                          if k in tuning.NAV2_KEYS})
+        applied = {name: link.set_nav2_parameters(by_node)
+                   for name, link in self.links.items()
+                   if by_node and hasattr(link, 'set_nav2_parameters')}
+        return {'values': tuning.describe({**current, **self.tuning}), 'applied': applied}
+
+    def lane_status(self, pose):
+        """경기장에서 가장 가까운 트랙과 그 중심선에서 벗어난 거리 [m]. 경기장이 아니면 None."""
+        if not pose or not hasattr(self.layout, 'nearest_track'):
+            return None
+        track_id = self.layout.nearest_track(pose)
+        offset = self.layout.tracks[track_id].nearest(pose['x'], pose['y'], samples=360)[1]
+        return {'track': track_id, 'offset': round(offset, 3)}
+
     # ---- 준비 중 -------------------------------------------------------
     @staticmethod
     def pending(feature):
@@ -149,6 +214,7 @@ class Fleet:
         status = self._link(name).status()
         status['vehicle'] = self.vehicle_info(name)
         status['callsign'] = self.callsigns.get(name, name)
+        status['lane'] = self.lane_status(status.get('pose'))
         return status
 
     def snapshot(self, log_limit=20):

@@ -59,14 +59,38 @@
 | 7 | 새 터미널에서 `./run.sh` 후 | `source install/setup.bash` → `ros2 launch pinky_parking_control control.launch.py` | 관제 서버를 켭니다 |
 | 8 | 그 PC 브라우저 | `http://localhost:8080` | 진짜 관제센터가 열립니다 (`?demo` 없이) |
 
-- 지금 시뮬레이션은 공장 월드라서 공장 지도가 나옵니다. 경기장 월드(#1)가 생기면 자동으로 경기장 화면이 됩니다.
+- 위 6·7번은 공장 월드라서 공장 지도가 나옵니다. 경기장 위에서 돌리려면 아래 "임시 경기장 시뮬레이션"을 씁니다.
+
+#### 임시 경기장 시뮬레이션
+
+경기장 월드(#1)와 지도(#3)가 생기기 전까지, 도면 좌표(`config/arena.yaml`)로 만든 임시 경기장 월드(`pinky_parking_gazebo/worlds/arena.world`)와 지도(`pinky_parking_navigation/maps/arena`)를 씁니다. 로봇 목록은 `pinky_parking_bringup/config/robots_arena.yaml`입니다(월드 이름이 `arena.world`라 관제 화면이 자동으로 경기장이 됩니다).
+
+```bash
+# 컨테이너 안, 위 4·5번 뒤. 6번 대신:
+C=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml
+M=$PWD/install/pinky_parking_navigation/share/pinky_parking_navigation/maps/arena.yaml
+ros2 launch pinky_parking_bringup sim.launch.py robots:=$C map:=$M
+# 7번 대신 (새 터미널):
+ros2 launch pinky_parking_control control.launch.py robots:=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml
+```
+
+- 테이프·주차 칸·주유구역은 바닥 그림이라 라이다에 안 보입니다. 위치 추정(AMCL)이 되도록 바닥 바깥에 낮은 벽과 블록을 둘렀습니다. 실물 경기장에는 없는 것입니다.
+- `arena.yaml`을 고치면 `python3 scripts/make_arena_sim.py`로 월드와 지도를 다시 만들고 colcon build 합니다.
+- 시뮬레이션을 끈 뒤 다시 켤 때 `gz sim`이 남아 있으면 시간(`/clock`)이 섞여 주행이 실패합니다. 컨테이너에서 `pgrep -af "gz sim"`으로 확인합니다.
 - 같은 와이파이의 다른 PC에서 열거나 팀 비밀번호를 정하려면 [docs/remote_access.md](../docs/remote_access.md)를 봅니다.
+
+### C. 실물 로봇과 연결하기
+
+절차는 [docs/real_robot.md](../docs/real_robot.md)의 "5-1. 경기장 없이 좌표로만 시험"에 있습니다. 요약: 로봇을 주차 칸 자리(A = 11번, B = 10번)에 놓고 켠 뒤, PC에서 `real_check`(연결 점검) → `real.launch.py`(Nav2, 바퀴 기록으로 위치) → `control.launch.py` 순서로 켭니다.
+
+- 한 대만 시험하려면 `real.launch.py`와 `control.launch.py`에 `only:=pinky1`을 붙입니다. 시나리오에서 연결하지 않은 로봇의 행동은 "B 없음"으로 건너뜁니다.
+- 실물 로봇은 유닛 카드에 배터리 전압이 나옵니다.
 
 ## 배치: 경기장과 공장 월드
 
 | 배치 | 언제 | 좌표 |
 |---|---|---|
-| **경기장** | 경기장 월드(#1)가 생긴 뒤, 데모 화면 | `config/arena.yaml` (팀 도면 2000 × 2000 mm를 옮긴 값) |
+| **경기장** | 임시 경기장 시뮬레이션, 경기장 월드(#1)가 생긴 뒤, 데모 화면 | `config/arena.yaml` (팀 도면 2000 × 2000 mm를 옮긴 값) |
 | **공장 월드** | 지금 시뮬레이션 (공식 공장 월드) | `slots.yaml`, `route.yaml`, `maps/factory` |
 
 `config/control.yaml`의 `layout: auto`가 `robots.yaml`의 월드 이름을 보고 고릅니다. 이름에 `factory`가 있으면 공장 월드, 아니면 경기장입니다. 그래서 경기장 월드가 생기면 `robots.yaml`만 바꿔도 자동으로 경기장이 됩니다. 직접 고르려면 `--layout arena` 또는 `--layout factory`를 씁니다.
@@ -121,15 +145,15 @@
 
 | 단계 | 내용 |
 |---|---|
-| 1 | 주차 구역에서 시작: A(T00) 10번, B(T10) 11번 |
+| 1 | 주차 구역에서 시작: A(T00) 11번, B(T10) 10번 |
 | 2 | 1바퀴 직진: A 1번 트랙, B 2번 트랙 |
 | 3 | 2번 트랙 간격 조절 1바퀴: **준비 중(#12)이라 건너뜀** |
 | 4 | A 차선 변경 후 대기선 → 주유구역 |
 | 5 | B 대기선에서 차례 기다리기 |
 | 6 | A 트레일러 바꾸기: **사람 확인을 기다림** → T15 → 트랙 복귀 |
-| 7 | B 주유 후 11번 칸에 주차 |
+| 7 | B 주유 후 10번 칸에 주차 |
 | 8 | A(T15) 2번 트랙 1바퀴 |
-| 9 | A 10번 칸에 주차하고 종료 |
+| 9 | A 11번 칸에 주차하고 종료 |
 
 - 한 단계 안에서 A와 B는 동시에, 같은 로봇의 행동은 적힌 순서대로 합니다.
 - **다음 단계**는 한 단계만, **끝까지**는 이어서 합니다. 실패하면 그 단계에서 멈추고 이유를 보여 줍니다.

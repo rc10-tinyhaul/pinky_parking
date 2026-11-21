@@ -23,6 +23,8 @@ services:
       - QT_X11_NO_MITSHM=1
       # 관제 대시보드 팀 비밀번호. 호스트에서 정한 값을 넘긴다 (docs/remote_access.md). 비우면 비밀번호 없음.
       - PINKY_CONTROL_PASSWORD=${PINKY_CONTROL_PASSWORD:-}
+      # 관제 서버가 작업마다 궤적 파일을 남기는 곳 (저장소 폴더 안이라 호스트에 남는다. .gitignore)
+      - PINKY_LOG_DIR=/ws/src/pinky_parking/logs
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw      # Gazebo·RViz 창
       - .:/ws/src/pinky_parking               # 저장소 연결: 고친 코드·저장한 지도가 호스트에 남음

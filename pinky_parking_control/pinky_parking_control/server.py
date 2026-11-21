@@ -140,6 +140,37 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
             raise HTTPException(404, '지도가 없습니다 (경기장 배치는 도면으로 그립니다)')
         return map_data
 
+    @app.get('/api/robots/{name}/slam_map', tags=['상태 조회'])
+    def slam_map(name: str):
+        """SLAM 이 만들고 있는 지도 (localization:=slam 일 때). 없으면 404."""
+        link = _call(fleet._link, name)
+        view = link.slam_view() if hasattr(link, 'slam_view') else None
+        if view is None:
+            raise HTTPException(404, 'SLAM 지도가 없습니다')
+        return view
+
+    @app.get('/api/robots/{name}/scan', tags=['상태 조회'])
+    def scan(name: str):
+        """지금 라이다가 보는 점들 (지도 좌표)."""
+        link = _call(fleet._link, name)
+        return link.scan_view() if hasattr(link, 'scan_view') else {'points': []}
+
+    @app.get('/api/tuning', tags=['주행 설정'])
+    def tuning_get():
+        return fleet.tuning_view()
+
+    @commands.post('/api/tuning', tags=['주행 설정'])
+    def tuning_set(body: dict = Body(..., examples=[{'speed': 0.15, 'lookahead': 0.2}])):
+        """속도·회전·곡선 감도·도착 허용 거리·직접 운전 감도를 바꾼다. 달리는 중에도 적용된다."""
+        return _call(fleet.set_tuning, body)
+
+    @commands.post('/api/robots/{name}/set_pose', tags=['기본 이동'])
+    def set_pose(name: str, body: dict = Body(..., examples=[{'slot': 'slot_11'}])):
+        """로봇을 손으로 옮겨 놓은 뒤 지금 위치를 알려 준다: {slot} 또는 {x, y, yaw}."""
+        if body.get('slot'):
+            return _call(fleet.set_pose, name, None, str(body['slot']))
+        return _call(fleet.set_pose, name, body)
+
     @app.websocket('/api/ws')
     async def stream(socket: WebSocket):
         await socket.accept()
@@ -246,7 +277,9 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     app.include_router(commands)
     if static_dir is not None and Path(static_dir).is_dir():
-        app.mount('/', StaticFiles(directory=str(static_dir), html=True), name='dashboard')
+        # colcon --symlink-install 은 static 파일을 build/ 로 가는 링크로 설치한다. 링크를 따라가야 화면이 열린다.
+        app.mount('/', StaticFiles(directory=str(static_dir), html=True, follow_symlink=True),
+                  name='dashboard')
     return app
 
 
@@ -286,12 +319,28 @@ def main():
     parser.add_argument('--map', default=str(_share('pinky_parking_navigation')
                                              / 'maps/factory.yaml'))
     parser.add_argument('--layout', choices=['auto', 'arena', 'factory'])
+    parser.add_argument('--log-dir', default=os.environ.get('PINKY_LOG_DIR', ''),
+                        help='작업마다 궤적 파일을 남길 폴더 (기본: 환경변수 PINKY_LOG_DIR, 없으면 ~/pinky_logs)')
+    parser.add_argument('--camera', action='append', default=[], metavar='이름=주소',
+                        help='로봇 카메라 영상 주소 (예: pinky1=http://192.168.0.5:8090/stream). 여러 번')
+    parser.add_argument('--only', default='',
+                        help='일부 로봇만 연결: 이름을 쉼표로 (예: pinky1). 실물을 한 대만 시험할 때')
     parser.add_argument('--host')
     parser.add_argument('--port', type=int)
     args = parser.parse_args(rclpy.utilities.remove_ros_args(sys.argv)[1:])
 
     config = _yaml(args.config)
+    log_dir = Path(args.log_dir).expanduser() if args.log_dir else Path.home() / 'pinky_logs'
+    config['trajectory_dir'] = str(log_dir / 'trajectories')
+    cameras = dict(config.get('cameras') or {})
+    cameras.update(item.split('=', 1) for item in args.camera if '=' in item)
+    config['cameras'] = cameras
     world_name, robots = load_robots(args.robots)
+    only = [n for n in args.only.split(',') if n]
+    if only:
+        robots = [r for r in robots if r['name'] in only]
+        if not robots:
+            parser.error(f'--only 에 맞는 로봇이 없습니다: {args.only}')
     arena = _yaml(args.arena)
     kind = choose_layout(args.layout or config.get('layout', 'auto'), world_name)
     if kind == ARENA:
@@ -314,6 +363,7 @@ def main():
     names = ', '.join(f'{r["name"]}(도메인 {r["domain_id"]})' for r in robots)
     print(f'관제 서버: http://{host}:{port}  배치: {layout.to_dict()["name"]}  로봇: {names}',
           flush=True)
+    print(f'궤적 기록: {config["trajectory_dir"]}', flush=True)
     if password:
         print('팀 비밀번호: 켜짐 (명령을 보내려면 비밀번호가 필요합니다)', flush=True)
     else:

@@ -80,6 +80,9 @@ class Task:
     detail: str = ''
     distance_remaining: float = None
     waypoint_index: int = 0
+    # '' = 위치 하나면 navigate_to_pose, 여럿이면 follow_waypoints. 'path' = follow_path (이어진 경로)
+    mode: str = ''
+    trail: list = field(default_factory=list)   # 달리며 기록한 실제 위치 [t, x, y, yaw, v, w]
 
     def __post_init__(self):
         if self.action not in ACTIONS:
@@ -112,7 +115,7 @@ class Task:
     def to_dict(self, now=None):
         return {
             'id': self.id, 'robot': self.robot, 'action': self.action, 'target': self.target,
-            'state': self.state, 'detail': self.detail,
+            'state': self.state, 'detail': self.detail, 'mode': self.mode,
             'started': self.started, 'finished': self.finished,
             'elapsed_s': round(self.elapsed(now), 1),
             'goal': self.poses[min(self.waypoint_index, len(self.poses) - 1)],
@@ -137,3 +140,26 @@ class TaskLog:
     def recent(self, limit=50):
         with self._lock:
             return list(self._items)[:max(0, int(limit))]
+
+
+def save_trajectory(task, directory):
+    """
+    끝난 작업의 계획 경로와 실제 궤적을 JSON 파일 하나로 남긴다 (보정·분석용).
+
+    planned: 보낸 목표 위치들 {x, y, yaw}.  actual: [작업 시작부터 초, x, y, yaw, 직진 m/s, 회전 rad/s].
+    actual 은 로봇이 스스로 계산한 위치다(AMCL 또는 바퀴 기록). 실제 바닥 위치와의 차이는 따로 잰다.
+    """
+    import json
+    from pathlib import Path
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime(task.started))
+    path = directory / f'{stamp}_{task.robot}_{task.id:03d}_{task.action}.json'
+    data = {
+        'robot': task.robot, 'action': task.action, 'target': task.target, 'mode': task.mode,
+        'state': task.state, 'detail': task.detail, 'started': task.started,
+        'elapsed_s': round(task.elapsed(), 2), 'planned': task.poses,
+        'actual_columns': ['t', 'x', 'y', 'yaw', 'v', 'w'], 'actual': task.trail,
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    return path

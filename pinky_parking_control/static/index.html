@@ -71,10 +71,39 @@
             <p class="meta" id="field-meta">2000 × 2000 mm · 반시계 주행</p>
             <ul class="legend" id="legend"></ul>
           </header>
+          <div class="field-tools" id="field-tools">
+            <label class="check"><input type="checkbox" id="show-slam" checked> SLAM 지도</label>
+            <label class="check"><input type="checkbox" id="show-scan" checked> 라이다</label>
+            <label class="check"><input type="checkbox" id="show-wide"> 넓게 보기</label>
+            <button class="btn btn-quiet btn-small" id="clear-trail" type="button">자취 지우기</button>
+            <span class="field-status" id="field-status"></span>
+          </div>
           <div class="field-wrap" id="field-wrap">
             <canvas id="field" aria-label="경기장 도면 위 로봇 위치. 우클릭으로 선택한 로봇에게 명령합니다."></canvas>
             <p class="field-hint" id="field-hint">우클릭: 선택한 유닛을 그곳으로 · 주차 칸·주유구역을 우클릭하면 그 행동</p>
           </div>
+        </section>
+
+        <div class="side">
+        <!-- 카메라 (실물 로봇) -->
+        <section class="panel camera" id="camera-panel" aria-labelledby="camera-title" hidden>
+          <header class="panel-head">
+            <h2 id="camera-title">카메라</h2>
+            <span class="meta" id="camera-meta"></span>
+            <button class="btn btn-quiet btn-small" id="camera-toggle" type="button" aria-pressed="true">끄기</button>
+          </header>
+          <img class="camera-img" id="camera-img" alt="선택한 유닛의 카메라 영상">
+        </section>
+
+        <!-- 주행 설정 -->
+        <section class="panel tuning" id="tuning-panel" aria-labelledby="tuning-title" hidden>
+          <header class="panel-head">
+            <h2 id="tuning-title">주행 설정</h2>
+            <span class="meta">달리는 중에도 바로 적용</span>
+            <button class="btn btn-quiet btn-small" id="tuning-reset" type="button">기본값</button>
+          </header>
+          <div class="tuning-list" id="tuning-list"></div>
+          <p class="card-error" id="tuning-error" role="status"></p>
         </section>
 
         <!-- 미션 -->
@@ -96,6 +125,8 @@
           </div>
           <p class="card-error" id="mission-error" role="status"></p>
         </section>
+
+        </div>
       </div>
 
       <!-- 명령 막대 -->
@@ -120,6 +151,7 @@
             <button class="cmd" type="button" data-cmd="park"><span>주차</span><kbd class="key">P</kbd></button>
             <button class="cmd" type="button" data-cmd="unpark"><span>출차</span><kbd class="key">U</kbd></button>
             <button class="cmd" type="button" data-cmd="precise" data-pending="park_precise"><span>정밀 주차</span><small>준비 중 #8</small></button>
+            <button class="cmd" type="button" data-cmd="set_pose" title="로봇을 손으로 이 칸에 놓은 뒤 누르면, 지금 위치를 이 칸으로 다시 맞춥니다"><span>위치 맞추기</span><small>여기가 이 칸</small></button>
           </div>
           <div class="cmd-group" aria-label="주유">
             <span class="cmd-label">주유</span>
@@ -179,6 +211,7 @@
       <div><dt>m/s</dt><dd data-r="speed">—</dd></div>
     </dl>
     <p class="link-line" data-r="link"></p>
+    <p class="link-line" data-r="health"></p>
   </article>
 </template>
 

@@ -15,7 +15,7 @@
   const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중' };
   const RESULT = { running: '진행 중', succeeded: '완료', failed: '실패', canceled: '취소됨' };
   const STEP_MARK = { running: '▸', done: '✓', skipped: '–', failed: '✕', stopped: '■' };
-  const TRAIL_POINTS = 150;
+  const TRAIL_POINTS = 1200;   // 자취를 길게 남긴다 (계획 경로와 겹쳐 보며 보정). '자취 지우기'로 비운다
   const TELEOP = { linear: 0.15, angular: 1.2 };
 
   const demo = new URLSearchParams(location.search).has('demo') ? window.PinkyDemo : null;
@@ -24,6 +24,10 @@
     connected: false, lastRecv: 0, trails: {}, units: {}, startDist: {}, hover: null,
     auth: { required: false, password: '' },
     drive: { on: false, keys: new Set(), joy: null, lin: 0, ang: 0, sending: false, busy: false },
+    slam: {},          // 로봇 이름 → { seq, image(offscreen canvas), width, height, resolution, origin, transform }
+    scan: {},          // 로봇 이름 → [[x, y], ...]
+    tuning: null,      // 주행 설정 목록 (서버가 준 범위와 지금 값)
+    camera: { on: true, shown: '' },
   };
   const PASSWORD_KEY = 'pinky-control-password';
   try { state.auth.password = sessionStorage.getItem(PASSWORD_KEY) || ''; } catch (e) { /* 매번 입력 */ }
@@ -143,6 +147,12 @@
     fuel_wait: (r) => order(r, 'fuel', { step: 'wait' }, '대기선 30으로'),
     fuel_enter: (r) => order(r, 'fuel', { step: 'enter' }, '주유구역 20 진입'),
     fuel_leave: (r) => order(r, 'fuel', { step: 'leave' }, '2번 트랙으로 복귀'),
+    set_pose: (r) => {
+      const slot = $('#slot-pick').value;
+      if (!window.confirm(`${sign(r)} 의 지금 위치를 ${slot} 가운데로 다시 맞춥니다.\n로봇을 그 칸에 앞을 보게 놓았나요?`)) return null;
+      state.trails[r.name] = [];
+      return order(r, 'set_pose', { slot }, `위치를 ${slot} 로 맞춤`);
+    },
     cancel: (r) => order(r, 'cancel', null, '작업 취소'),
     stop: (r) => order(r, 'stop', null, '정지'),
   };
@@ -157,6 +167,7 @@
     if (!r) return '유닛을 고르세요';
     if (ARENA_ONLY.has(cmd) && !isArena()) return '경기장 배치에서만 됩니다';
     if (state.drive.on) return '직접 운전 중입니다 (M으로 끄기)';
+    if (cmd === 'set_pose') return busy(r) ? '작업 중입니다. 먼저 취소하세요 (X)' : '';
     if (!r.nav2_ready) return 'Nav2가 아직 켜지지 않았습니다';
     if (busy(r)) return '작업 중입니다. 먼저 취소하세요 (X)';
     if ((cmd === 'lane' || cmd === 'drive1' || cmd === 'drive2') && !r.pose) return '로봇 위치를 아직 모릅니다';
@@ -174,7 +185,7 @@
 
   // ---- 위 HUD -----------------------------------------------------------------
   function taskRest(t) {
-    if (t.action === 'drive' || t.action === 'lap' || t.waypoint_total > 1) {
+    if (t.mode !== 'path' && (t.action === 'drive' || t.action === 'lap' || t.waypoint_total > 1)) {
       return `경유점 ${Math.min(t.waypoint_index + 1, t.waypoint_total)}/${t.waypoint_total}`;
     }
     return t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`;
@@ -287,6 +298,7 @@
 
   function robotState(r) {
     if (!state.connected) return { text: '연결 끊김', tone: 'negative' };
+    if (r.odom_hz === 0) return { text: '로봇 응답 없음', tone: 'negative' };   // 바퀴 기록이 끊김: 전원, 와이파이
     if (!r.nav2_ready) return { text: 'Nav2 대기', tone: 'warning' };
     if (busy(r)) return { text: RUNNING[r.task.action] || '작업 중', tone: 'active' };
     if (r.teleop) return { text: '직접 운전', tone: 'active' };
@@ -309,7 +321,7 @@
       q('task').textContent = busy(r) ? `${t.target} · ${taskRest(t)}` : t ? `마지막: ${t.target} ${ACTION[t.action] || ''} ${RESULT[t.state] || ''}` : '받은 작업 없음';
       let progress = 0;
       if (busy(r)) {
-        if (t.waypoint_total > 1) progress = t.waypoint_index / t.waypoint_total;
+        if (t.mode !== 'path' && t.waypoint_total > 1) progress = t.waypoint_index / t.waypoint_total;
         else if (t.distance_remaining != null && state.startDist[t.id]) progress = 1 - t.distance_remaining / state.startDist[t.id];
       }
       q('progress').style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
@@ -323,8 +335,136 @@
       }
       q('link').innerHTML = `<span ${r.nav2_ready ? '' : 'data-bad'}>Nav2 <b>${r.nav2_ready ? '켜짐' : '꺼짐'}</b></span>`
         + `<span ${r.localized ? '' : 'data-bad'}>위치 <b>${r.pose_age_s == null ? '없음' : `${fixed(r.pose_age_s, 1)} s 전`}</b></span>`
-        + `<span>${r.teleop ? '직접 운전' : `도메인 <b>${r.domain_id}</b>`}</span>`;
+        + `<span>${r.teleop ? '직접 운전' : `도메인 <b>${r.domain_id}</b>`}</span>`
+        // 실물 로봇만 배터리 전압을 낸다. 7 V 아래로 내려가면 충전이 안 될 수 있다 (공식 안내)
+        + (r.battery_v == null ? '' : `<span ${r.battery_v < 7.0 ? 'data-bad' : ''}>배터리 <b>${fixed(r.battery_v, 1)} V</b></span>`);
+      const lane = r.lane ? `<span ${r.lane.offset > 0.06 ? 'data-bad' : ''}>${r.lane.track}번 트랙 <b>${Math.round(r.lane.offset * 1000)} mm</b></span>` : '';
+      q('health').innerHTML = lane
+        + (r.odom_hz == null ? '' : `<span ${r.odom_hz < 5 ? 'data-bad' : ''}>바퀴 <b>${fixed(r.odom_hz, 0)} Hz</b></span>`)
+        + (r.scan_hz == null ? '' : `<span ${r.scan_hz < 3 ? 'data-bad' : ''}>라이다 <b>${fixed(r.scan_hz, 0)} Hz</b></span>`);
       drawSprite(q('sprite'), r);
+    }
+  }
+
+  // ---- 카메라 (실물 로봇이 내보내는 영상 주소를 그대로 보여 준다) -------------------
+  function renderCamera() {
+    const r = sel();
+    const url = r && r.camera_url;
+    const panel = $('#camera-panel');
+    panel.hidden = !url;
+    if (!url) { state.camera.shown = ''; return; }
+    $('#camera-meta').textContent = `${sign(r)} ${r.name}`;
+    const want = state.camera.on ? url : '';
+    if (state.camera.shown !== want) {
+      state.camera.shown = want;
+      const img = $('#camera-img');
+      if (want) img.src = want; else img.removeAttribute('src');   // 끄면 영상 받기를 멈춘다
+    }
+    const toggle = $('#camera-toggle');
+    toggle.textContent = state.camera.on ? '끄기' : '켜기';
+    toggle.setAttribute('aria-pressed', String(state.camera.on));
+  }
+
+  // ---- 주행 설정 (속도, 감도) --------------------------------------------------
+  let tuneTimer = 0;
+  function buildTuning() {
+    const list = $('#tuning-list');
+    list.textContent = '';
+    for (const t of state.tuning) {
+      const row = document.createElement('div');
+      row.className = 'tune';
+      const digits = t.step < 0.1 ? 2 : 1;
+      row.innerHTML = `<label for="tune-${t.key}">${esc(t.name)}</label><output>${fixed(t.value, digits)} ${esc(t.unit)}</output>`
+        + `<input type="range" id="tune-${t.key}" min="${t.min}" max="${t.max}" step="${t.step}" value="${t.value}">`;
+      row.title = t.help;
+      const input = row.querySelector('input');
+      input.addEventListener('input', () => {
+        row.querySelector('output').textContent = `${fixed(Number(input.value), digits)} ${t.unit}`;
+        row.toggleAttribute('data-changed', Math.abs(Number(input.value) - t.default) > 1e-9);
+        clearTimeout(tuneTimer);
+        tuneTimer = setTimeout(() => sendTuning({ [t.key]: Number(input.value) }), 200);
+      });
+      row.toggleAttribute('data-changed', Math.abs(t.value - t.default) > 1e-9);
+      list.appendChild(row);
+    }
+  }
+
+  function applyTuning(values) {
+    state.tuning = values;
+    for (const t of values) {
+      if (t.key === 'teleop_linear') TELEOP.linear = t.value;
+      if (t.key === 'teleop_angular') TELEOP.angular = t.value;
+    }
+  }
+
+  async function sendTuning(changes) {
+    $('#tuning-error').textContent = '';
+    try {
+      const reply = await api('POST', '/api/tuning', changes);
+      applyTuning(reply.values);
+    } catch (error) { $('#tuning-error').textContent = error.message; }
+  }
+
+  async function loadTuning() {
+    try {
+      applyTuning(await api('GET', '/api/tuning'));
+      buildTuning();
+      $('#tuning-panel').hidden = false;
+    } catch (error) { $('#tuning-panel').hidden = true; }   // 데모나 예전 서버
+  }
+
+  // ---- SLAM 지도와 라이다 점 (선택한 유닛) --------------------------------------
+  function slamImage(grid) {
+    const off = document.createElement('canvas');
+    off.width = grid.width; off.height = grid.height;
+    const g = off.getContext('2d');
+    const img = g.createImageData(grid.width, grid.height);
+    for (let i = 0; i < grid.cells.length; i += 1) {
+      const c = grid.cells[i];
+      if (c !== 'o') continue;            // 장애물만 그린다 (빈 곳까지 칠하면 도면이 얼룩져 보인다)
+      const k = i * 4;
+      img.data[k] = 236; img.data[k + 1] = 196; img.data[k + 2] = 92; img.data[k + 3] = 235;
+    }
+    g.putImageData(img, 0, 0);
+    return off;
+  }
+
+  let sensing = false;
+  async function sensorTick() {
+    const r = sel();
+    if (demo || sensing || !r || !state.connected || $('#view-board').hidden) return;
+    sensing = true;
+    const base = `/api/robots/${encodeURIComponent(r.name)}`;
+    try {
+      if ($('#show-slam').checked && r.slam_seq && (!state.slam[r.name] || state.slam[r.name].seq !== r.slam_seq)) {
+        const grid = await api('GET', `${base}/slam_map`);
+        state.slam[r.name] = { ...grid, cells: undefined, image: slamImage(grid) };
+      }
+      if ($('#show-scan').checked && r.scan_hz > 0) state.scan[r.name] = (await api('GET', `${base}/scan`)).points;
+      else state.scan[r.name] = [];
+    } catch (error) { /* 다음 틱에 다시 */ }
+    sensing = false;
+    drawField();
+  }
+
+  function drawSensors() {
+    const r = sel();
+    if (!r) return;
+    const m = state.slam[r.name];
+    if (m && $('#show-slam').checked) {
+      const t = m.transform; const k = m.resolution * view.s;
+      const [px, py] = toPx(t.x, t.y);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, canvas.width / view.dpr, canvas.height / view.dpr); ctx.clip();
+      ctx.translate(px, py); ctx.rotate(-t.yaw); ctx.scale(k, k);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(m.image, m.origin.x / m.resolution, -(m.origin.y / m.resolution + m.height));
+      ctx.restore();
+    }
+    const pts = state.scan[r.name];
+    if (pts && pts.length && $('#show-scan').checked) {
+      ctx.fillStyle = css('--select');
+      for (const [x, y] of pts) { const [sx, sy] = toPx(x, y); ctx.fillRect(sx - 1.2, sy - 1.2, 2.4, 2.4); }
     }
   }
 
@@ -495,7 +635,16 @@
   const ctx = canvas.getContext('2d');
   let view = null;
 
+  function boardBounds() {
+    const b = state.layout.board;   // x, y = 바닥 왼쪽 아래 모서리 (없으면 원점 가운데)
+    return { x0: b.x ?? -b.width / 2, y0: b.y ?? -b.height / 2, w: b.width, h: b.height };
+  }
+
   function bounds() {
+    if (isArena() && $('#show-wide').checked) {     // 바닥 둘레 1.5 m 까지 (SLAM 지도, 라이다 보기)
+      const b = boardBounds(); const m = 1.5;
+      return { x0: b.x0 - m, y0: b.y0 - m, w: b.w + 2 * m, h: b.h + 2 * m };
+    }
     if (isArena()) {
       const b = state.layout.board;   // x, y = 바닥 왼쪽 아래 모서리 (없으면 원점 가운데)
       return { x0: b.x ?? -b.width / 2, y0: b.y ?? -b.height / 2, w: b.width, h: b.height };
@@ -550,7 +699,7 @@
 
   function drawArena() {
     const L = state.layout;
-    const b = bounds();
+    const b = boardBounds();
     const [bx, by] = toPx(b.x0, b.y0 + b.h);
     ctx.fillStyle = css('--board'); ctx.fillRect(bx, by, b.w * view.s, b.h * view.s);
     // 0.5 m 격자와 눈금
@@ -692,6 +841,7 @@
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (isArena()) drawArena(); else drawFactory();
+    drawSensors();
     // 자취와 남은 경로
     for (const r of state.robots) {
       const color = unitColor(r);
@@ -702,11 +852,13 @@
         ctx.globalAlpha = 1;
       }
       if (busy(r) && r.pose) {
-        const rest = r.task.poses.slice(r.task.waypoint_index);
+        // 이어진 경로(path)는 계획 전체를 그린다: 실제 자취와 겹쳐 보며 벗어난 곳을 찾는다
+        const rest = r.task.mode === 'path' ? r.task.poses : r.task.poses.slice(r.task.waypoint_index);
         ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
         ctx.beginPath();
-        let [x0, y0] = toPx(r.pose.x, r.pose.y); ctx.moveTo(x0, y0);
-        for (const p of rest) { [x0, y0] = toPx(p.x, p.y); ctx.lineTo(x0, y0); }
+        let [x0, y0] = toPx(r.pose.x, r.pose.y);
+        if (r.task.mode !== 'path') ctx.moveTo(x0, y0);
+        rest.forEach((p, i) => { [x0, y0] = toPx(p.x, p.y); if (i || r.task.mode !== 'path') ctx.lineTo(x0, y0); else ctx.moveTo(x0, y0); });
         ctx.stroke(); ctx.setLineDash([]);
         const g = rest[rest.length - 1] || r.task.goal;
         const [gx, gy] = toPx(g.x, g.y);
@@ -810,6 +962,13 @@
     if ($('#legend').innerHTML !== html) $('#legend').innerHTML = html;
   }
 
+  function renderFieldStatus() {
+    const r = sel();
+    const el = $('#field-status');
+    if (!r || !r.pose) { el.textContent = ''; return; }
+    el.textContent = `${sign(r)} (${fixed(r.pose.x)}, ${fixed(r.pose.y)}) ${deg(r.pose.yaw)}° · ${fixed(r.speed ? r.speed.linear : 0)} m/s`;
+  }
+
   // ---- 키보드 -----------------------------------------------------------------
   document.addEventListener('keydown', (event) => {
     const tag = (event.target.tagName || '').toLowerCase();
@@ -844,11 +1003,21 @@
 
   function renderAll() {
     renderLock(); renderFresh(); renderFinding(); renderUnits(); renderCommand();
-    renderMission(); renderLegend(); renderLogView(); drawField();
+    renderMission(); renderLegend(); renderLogView(); renderCamera(); renderFieldStatus(); drawField();
   }
 
   $$('.cmd').forEach((b) => b.addEventListener('click', () => { if (!b.dataset.pending) runCommand(b.dataset.cmd); }));
   $('#stop-all').addEventListener('click', stopAll);
+  ['#show-slam', '#show-scan'].forEach((id) => $(id).addEventListener('change', () => { sensorTick(); drawField(); }));
+  $('#show-wide').addEventListener('change', () => { layoutField(); drawField(); });
+  $('#clear-trail').addEventListener('click', () => { state.trails = {}; drawField(); });
+  $('#camera-toggle').addEventListener('click', () => { state.camera.on = !state.camera.on; renderCamera(); });
+  $('#tuning-reset').addEventListener('click', async () => {
+    if (!state.tuning) return;
+    await sendTuning(Object.fromEntries(state.tuning.map((t) => [t.key, t.default])));
+    buildTuning();
+  });
+  setInterval(sensorTick, 400);
   $('#drive-toggle').addEventListener('click', toggleDriving);
   $('#sc-next').addEventListener('click', () => scenario('next'));
   $('#sc-run').addEventListener('click', () => scenario('run'));
@@ -881,5 +1050,6 @@
       layoutField();
       route();
       connect();
+      loadTuning();
     });
 })();
