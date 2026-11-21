@@ -1,0 +1,36 @@
+# =============================================================================
+# gazebo_drive.yaml — 가제보 주행 시험 설정 (14단계). 판정 기준(gate)은 사용자 승인값(2026-11-19)이며 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/gazebo_drive.sh → data_tools/gazebo_eval.py
+#   판정(M0 만): 프로파일 속도(≤ 0.23 m/s)로 1·2번 트랙 각 1바퀴를 선을 밟지 않고 완주 + 실제 위치 기준 평균 |offset| ≤ 2cm.
+#               시간은 시뮬레이션 시간(/clock) 기준(가제보 실시간 비율이 1 보다 낮아도 같은 결과가 나오게).
+#   M1(학습 잔차): 가제보에 트레일러 모델이 없어 판정하지 않고 참고(REF)로만 기록한다(모델이 학습한 길이의 프로파일만).
+#   단위: m, m/s, cm, s. 가제보 결과는 실제 로봇 성능이 아니다.
+# =============================================================================
+# 변경 이력
+#   version 2 (2026-11-20, 사용자 승인 — 시험 결과를 본 뒤 바꾼 사후 변경): 선 밟음 판정을 몸체 모서리 → 바퀴 접지점 기준으로(gate.touch_basis: wheel).
+#     이유: 차선변경 평가기(version 2)와 기준을 통일. 다른 수치(속도·바퀴 수·평균 offset·선 밟음 0)는 그대로. 몸체 기준 값은 line_touch_samples_body 로 함께 기록.
+#     예전(version 1) 결과는 몸체 기준이었고 다시 계산하지 않았다. 바퀴 간격·폭은 미확인 가정(footprint 참고).
+version: 2
+gate:                                   # [사용자 승인 2026-11-19] 바꾸지 말 것(바꾸려면 다시 승인)
+  speed_max_mps: 0.23                   # 프로파일 속도(configs/trailer.yaml max_speed_mps)가 이 값 이하인지 확인
+  laps: 1.0                             # 트랙마다 완주해야 하는 바퀴 수
+  mean_abs_offset_cm_max: 2.0           # 실제 위치 기준 차선 중심 평균 |offset|
+  line_touch_max: 0                     # 선 밟은 샘플 수(touch_basis 기준 접촉점이 차선 빈 폭 밖)
+  touch_basis: wheel                    # [version 2, 사후 변경] wheel = 두 바퀴 접지점, body = 몸체 네 모서리(version 1)
+  time_basis: sim                       # 시간 기준: 시뮬레이션 시간
+run:
+  presets: [drive_s1, drive_s2]         # configs/run_presets.yaml 의 프리셋. 조합의 각 로봇을 따로(한 대씩) 시험
+  tracks: [1, 2]
+  start_phase_m: 0.0                    # 출발 위치: 오른쪽 직선 아래 끝(위상 0), 진행 방향 +y(반시계)
+  timeout_factor: 2.5                   # 시뮬레이션 시간 한도 = 바퀴 길이 / 속도 × 이 값(+ 시작 대기)
+  start_wait_s: 3.0                     # 생성 뒤 인식이 안정될 때까지 기다림(시뮬레이션 시간)
+  perception_file: configs/perception_gazebo.yaml
+  m1_model: models/residual_demo_L10_15_v0.npz   # 참고(REF) 실행에 쓸 모델(학습 길이 밖 프로파일은 건너뜀)
+  footprint: {length_m: 0.14, width_m: 0.13, wheel_separation_m: 0.0961, wheel_width_m: 0.02}   # arena.yaml robot.size_mm. [가정] 기준점=몸체 중심. 바퀴 간격 0.0961(DiffDrive 값, URDF 는 0.0811), 바퀴 폭 0.02 는 실측 전 가정
+repeat:                                 # [17단계, 사용자 승인 2026-11-19 — 결과 전에 고정] 반복 시험(I-039 재현성)
+  n: 5                                  # gazebo_drive.sh --repeat 기본값으로 쓰지는 않음(명시적으로 --repeat 5)
+  case_labels:                          # 사례 판정(회당 판정은 위 gate 그대로)
+    stable_pass: all                    #   n 회 모두 PASS → 안정 통과
+    unstable: some                      #   1 ~ n−1 회 PASS → 불안정
+    fail: none                          #   0 회 → 실패
+  mode_choice: [total_pass, completions, median_max_abs_offset]   # 기본 모드 결정: 총 PASS 많은 쪽 → 완주 많은 쪽 → 최대|offset| 중앙값 작은 쪽

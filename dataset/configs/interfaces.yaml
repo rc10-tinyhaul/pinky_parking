@@ -1,0 +1,434 @@
+# =============================================================================
+# interfaces.yaml — 인터페이스 레지스트리 (토픽/서비스/액션의 단일 기준표)
+#
+# ▸ 이 파일이 "기준"이다. docs/INTERFACES.md 의 표는 이 파일에서 자동 생성한다:
+#     ./scripts/check_interfaces.sh --write-doc
+# ▸ ./scripts/check_interfaces.sh 가 이 파일과 실제 소스(src/**/*.py, fuel_msgs)를 대조한다.
+#
+# 이름 규칙
+#   - 로봇별 이름은 /<robot>/... 로 쓴다. [12단계, 2026-11-19] <robot> 자리는 '로봇+프로파일 접두어'다(configs/gazebo_robots.yaml):
+#       기본 robot_profile 모드: /{로봇글자}{프로파일} 예) robot_a+T00 → /at00/cmd_vel, robot_b+T10 → /bt10/cmd_vel (노드를 __ns:=/at00 으로 실행)
+#       none 모드: 접두어 없음(/cmd_vel, __ns:=/) — 로봇 한 대일 때만. 환경변수 AV_TOPIC_PREFIX_MODE 가 우선.
+#     표기 /<robot>/ 은 검사기 호환을 위해 그대로 둔다. 모든 노드/스크립트는 data_tools.gazebo_robots.ns_of(로봇, 프로파일)로 이름을 만든다.
+#     scenario_node 는 실행 조합(configs/run_presets.yaml)의 이벤트로 프로파일이 바뀌면 토픽도 바꾼다(예: S4 robot_a /at00 → /at15).
+#   - 코드의 상대 이름(예: "cmd_vel")과 f"/{robot}/..." 는 검사기가 /<robot>/... 로 정규화한다.
+#
+# 필드
+#   name      : 위 규칙의 이름                       kind  : topic | service | action
+#   type      : 패키지/타입 (예: fuel_msgs/LaneState, std_srvs/Trigger)
+#   group     : perception | control | parking | harness | data | platform | gate  (문서 표의 묶음)
+#   publisher : 발행/제공 측 설명 (노드 이름 또는 "없음")   subscribers : 구독/사용 측 노드 목록
+#   rate      : 주기 설명 (코드의 타이머 기준이면 그렇게 적는다. 모르면 "미확인")
+#   depth     : 코드에 쓰인 history depth (정수, 모르면 생략). QoS 프로파일은 전부 기본값(RELIABLE/VOLATILE)이다.
+#   status    : implemented  = 코드에 제공 측(발행/서비스)이 있다
+#               defined_only = 메시지/액션 정의만 있고 서버/클라이언트 코드가 없다
+#               no_publisher = 구독하는 코드는 있는데 발행하는 노드가 없다  ← 경고(WARN)
+#               external     = 로봇/센서/ROS 가 제공(이 저장소 코드에는 구독만 있거나 없음)
+#               manual       = 사람이 손으로 발행/호출 (ros2 topic pub / service call)
+#               out_of_scope = 오늘(2026-11-18) 범위 밖 — 주유소(게이트). 코드는 남아 있다.
+#   recorded  : true 이면 configs/topics.yaml 의 rosbag 기록 대상이어야 한다(검사됨).
+#   note      : 알아둘 점
+# =============================================================================
+version: 1
+
+# ----- 알려진 표준 메시지 패키지 (검사기가 fuel_msgs 밖의 타입을 허용하는 목록) -----
+standard_packages: [std_msgs, std_srvs, sensor_msgs, geometry_msgs, nav_msgs, tf2_msgs]
+
+interfaces:
+  # ===== perception (인식) =====
+  - name: /<robot>/camera/image_raw/compressed
+    kind: topic
+    type: sensor_msgs/CompressedImage
+    group: perception
+    publisher: 없음 — 로봇 측 pinkylib 카메라 발행 노드가 필요하다(미구현)
+    subscribers: [lane_node, gate_signal_node]
+    rate: 미확인(카메라 설정)
+    depth: 5
+    status: no_publisher
+    recorded: true
+    note: 핑키프로에는 카메라가 있으나(pinkylib Camera) 공식 ROS bringup launch 에는 카메라 노드가 없다([소스확인]). pinkylib 프레임(형식/해상도/주기 미확인)을 JPEG 로 압축해 이 토픽으로 내보내는 노드를 로봇에 따로 만들어야 한다. 카메라 하드웨어는 한 프로세스만 쓸 수 있다고 알려져 있어 이 노드가 독점해야 한다(추정). 제3자 pinky_traffic 은 같은 이름으로 발행한다(미검증).
+
+  - name: /<robot>/perception/lane
+    kind: topic
+    type: fuel_msgs/LaneState
+    group: perception
+    publisher: lane_node
+    subscribers: [lane_follow_node, case_runner_node, front_gap_node]
+    rate: 카메라 프레임마다(이벤트)
+    depth: 10
+    status: implemented
+    recorded: true
+    note: 검출 실패 시 confidence=0 으로 발행. 부호 규약은 LaneState.msg 주석 참고.
+
+  # ===== control (주행 제어) =====
+  - name: /<robot>/cmd_vel
+    kind: topic
+    type: geometry_msgs/Twist
+    group: control
+    publisher: lane_follow_node, park_node
+    subscribers: [로봇 베이스 드라이버]
+    rate: 20Hz (코드 타이머 0.05초; park_node 도 기본 20Hz)
+    depth: 10
+    status: implemented
+    recorded: true
+    note: enable=false 이거나 차선 신뢰도가 낮으면 0,0 을 계속 발행(정지 유지). 핑키프로 bringup 은 Twist(Stamped 아님)를 받아 두 바퀴 RPM 으로 바꾸며([소스확인]) 메시지가 끊겨도 멈추는 워치독이 없다 → 마지막 속도로 계속 달릴 수 있으니 노드 종료 시 0,0 을 먼저 보내고 비상정지 절차를 둔다. 최대 직선속도 약 0.283 m/s, 곡선에서 한쪽 바퀴가 한계를 넘으면 v 와 ω 가 함께 줄어든다(configs/trailer.yaml robot_limits).
+
+  - name: /<robot>/front_gap_cm
+    kind: topic
+    type: std_msgs/Float32
+    group: control
+    publisher: front_gap_node
+    subscribers: [lane_follow_node]
+    rate: 라이다 주기(가제보/실물 주기 미확인)
+    depth: 10
+    status: implemented
+    note: "[18단계] 앞 범퍼 기준 앞차 거리 [cm](라이다, 곡률로 휜 앞 통로 안 가장 가까운 점). 앞차를 못 찾으면 NaN 을 발행하고 lane_follow_node 는 NaN 또는 0.5초 넘게 안 오면 앞차 없음(최대 속도)으로 본다. run_robot.sh 가 keep_gap_cm > 0 일 때만 front_gap_node 를 띄운다. 가제보 연결 확인 전(미검증)."
+
+  - name: /<robot>/lane_change/request
+    kind: topic
+    type: std_msgs/Int32
+    group: control
+    publisher: gazebo_lane_change_eval (시험기) / 사람이 손으로
+    subscribers: [lane_follow_node]
+    rate: 이벤트(차선변경 요청 때 1회)
+    depth: 10
+    status: implemented
+    note: "[19단계 작업 1] +1 = 왼쪽(반시계 주행에서 안쪽 트랙, 2→1), −1 = 오른쪽. 차선변경 진행 중이면 무시. 길이 = trailer.yaml lane_change_len_cm. 손으로: ros2 topic pub --once <ns>/lane_change/request std_msgs/msg/Int32 '{data: 1}'. 가제보 확인 전(미검증)."
+
+  - name: /<robot>/lane_change/state
+    kind: topic
+    type: std_msgs/String
+    group: control
+    publisher: lane_follow_node
+    subscribers: [gazebo_lane_change_eval]
+    rate: 상태가 바뀔 때 + 1초마다
+    depth: 10
+    status: implemented
+    note: "[19단계 작업 1] idle | active | done. [2026-11-20 CHECK/HOLD] hold 추가 — 목표 쪽 옆 차선이 점유돼 차선변경을 시작하지 않고 자기 차선에서 정지 중(1초마다 재발행, 새 요청이 오면 다시 판단). 가제보 확인 전(미검증)."
+
+  - name: /<robot>/park/state
+    kind: topic
+    type: std_msgs/String
+    group: parking
+    publisher: park_node
+    subscribers: [gazebo_park_eval]
+    rate: 제어 주기마다(기본 20Hz)
+    depth: 10
+    status: implemented
+    note: "[20단계 블록 3] idle | running | done. enable(파라미터) 이 true 가 되면 경로 파일(path_file)을 처음부터 따라가 running, 경로 끝(입차는 정지 목표)에 닿으면 done. 가제보 확인 전(미검증)."
+
+  - name: /<robot>/park/progress
+    kind: topic
+    type: std_msgs/Float32
+    group: parking
+    publisher: park_node
+    subscribers: [사람]
+    rate: 제어 주기마다(기본 20Hz)
+    depth: 10
+    status: implemented
+    note: "[20단계 블록 3] 경로 진행률 0.0~1.0(종점 기준). 가제보 확인 전(미검증)."
+
+  - name: /<robot>/left_lane_occupied
+    kind: topic
+    type: std_msgs/Bool
+    group: control
+    publisher: front_gap_node
+    subscribers: [lane_follow_node]
+    rate: 라이다 주기(가제보/실물 주기 미확인)
+    depth: 10
+    status: implemented
+    note: "[2026-11-20 CHECK/HOLD] 왼쪽(반시계 주행에서 안쪽, 2→1) 옆 차선 점유 구역(로봇 중심 기준 뒤 0.25m~앞 1.0m, 옆 0.13~0.25m)에 라이다 점이 3개 이상이면 True. lane_change/request(+1)를 받은 lane_follow_node 가 시작할지 멈출지 정할 때 쓴다. 신호가 없거나 0.5초 넘게 오래되면 확인 없이 시작. run_robot.sh 가 keep_gap_cm > 0 일 때만 front_gap_node 를 띄운다. 가제보 확인 전(라이다 시야각·뒤쪽 감지 미검증)."
+
+  - name: /<robot>/right_lane_occupied
+    kind: topic
+    type: std_msgs/Bool
+    group: control
+    publisher: front_gap_node
+    subscribers: [lane_follow_node]
+    rate: 라이다 주기(가제보/실물 주기 미확인)
+    depth: 10
+    status: implemented
+    note: "[2026-11-20 CHECK/HOLD] 오른쪽 옆 차선 점유(left_lane_occupied 의 좌우 대칭, lane_change/request −1 용). 가제보 확인 전(미검증)."
+
+  - name: /<robot>/trailer/config
+    kind: topic
+    type: fuel_msgs/TrailerConfig
+    group: control
+    publisher: scenario_node, case_runner_node
+    subscribers: [lane_follow_node]
+    rate: 이벤트(단계/케이스 시작 시 1회)
+    depth: 10
+    status: implemented
+    recorded: true
+    note: "[11단계, I-031 해결] QoS transient_local(depth 1, reliable) — 발행 뒤에 시작한 구독자도 마지막 값을 받는다. 발행·구독 모두 이 QoS 여야 하고, 손으로 볼 때는 ros2 topic echo --qos-durability transient_local --qos-reliability reliable <토픽> fuel_msgs/msg/TrailerConfig. lane_follow_node 는 시작 길이를 trailer_cm 파라미터(run_robot.sh 가 프로파일 길이)로도 받는다."
+
+  # ===== parking (입차/출차) =====
+  - name: /<robot>/parking/enter
+    kind: action
+    type: fuel_msgs/Park
+    group: parking
+    publisher: 없음(서버 미구현)
+    subscribers: [하네스(예정)]
+    rate: 해당 없음
+    status: defined_only
+    note: 목표 slot_id 로 입차. Park.action 정의만 있음.
+
+  - name: /<robot>/parking/exit
+    kind: action
+    type: fuel_msgs/Park
+    group: parking
+    publisher: 없음(서버 미구현)
+    subscribers: [하네스(예정)]
+    rate: 해당 없음
+    status: defined_only
+    note: 입차와 같은 Park 타입을 쓴다. 정의만 있음.
+
+  - name: /<robot>/stop_xy_cm
+    kind: topic
+    type: std_msgs/Float32MultiArray
+    group: parking
+    publisher: 없음
+    subscribers: [case_runner_node]
+    rate: 미확인
+    depth: 10
+    status: no_publisher
+    note: "[x, y] cm 두 값. 위치추정/라이다가 생기면 그쪽이 발행. 지금은 발행자가 없어 입차 케이스는 UNJUDGED."
+
+  - name: /<robot>/drive/lane_change
+    kind: action
+    type: fuel_msgs/LaneChange
+    group: control
+    publisher: 없음(서버 미구현)
+    subscribers: [하네스(예정)]
+    rate: 해당 없음
+    status: defined_only
+    note: 오늘 범위의 시험(직선/곡선/입출차)에는 쓰지 않는다.
+
+  - name: /<robot>/drive/mode
+    kind: service
+    type: fuel_msgs/SetMode
+    group: control
+    publisher: 없음(서버 미구현)
+    subscribers: [하네스(예정)]
+    rate: 해당 없음
+    status: defined_only
+    note: 모드 상태머신(mode_state_machine.py)에 연결 예정. 모드 문자열에 GATE_WAIT/FUELING 이 포함돼 있다.
+
+  # ===== harness (시험 하네스) =====
+  - name: /case/start
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: case_runner_node
+    subscribers: [사람(ros2 service call)]
+    rate: 해당 없음
+    status: implemented
+    note: 현재 케이스 측정 시작. 이미 실행 중이면 success=false.
+
+  - name: /case/finish
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: case_runner_node
+    subscribers: [사람(ros2 service call)]
+    rate: 해당 없음
+    status: implemented
+    note: 판정 후 JSON 기록, 다음 케이스로 이동.
+
+  - name: /case/abort
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: case_runner_node
+    subscribers: [사람(ros2 service call)]
+    rate: 해당 없음
+    status: implemented
+    note: 측정 중단(ABORTED 기록).
+
+  - name: /case/reset
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: case_runner_node
+    subscribers: [사람(ros2 service call)]
+    rate: 해당 없음
+    status: implemented
+    note: 처음 케이스로 되돌림.
+
+  - name: /case/status
+    kind: topic
+    type: std_msgs/String
+    group: harness
+    publisher: case_runner_node
+    subscribers: [사람/로그]
+    rate: 1Hz (코드 타이머 1.0초)
+    depth: 10
+    status: implemented
+    note: JSON 문자열(run_id, case, running, finished, n_samples, done, total).
+
+  - name: /harness/step
+    kind: topic
+    type: fuel_msgs/StepStatus
+    group: harness
+    publisher: scenario_node
+    subscribers: [rosbag]
+    rate: 1Hz (코드 타이머 1.0초)
+    depth: 10
+    status: implemented
+    recorded: true
+    note: 시나리오 S0~S8 러너(기존). 주유 단계가 포함돼 오늘 시험(case_runner)과는 별개.
+
+  - name: /harness/step_done
+    kind: topic
+    type: std_msgs/String
+    group: harness
+    publisher: 사람(ros2 topic pub) 또는 자동 판정
+    subscribers: [scenario_node]
+    rate: 이벤트
+    depth: 10
+    status: manual
+    note: 단계 완료 신호.
+
+  - name: /harness/start
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: scenario_node
+    subscribers: [사람]
+    rate: 해당 없음
+    status: implemented
+
+  - name: /harness/stop
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: scenario_node
+    subscribers: [사람]
+    rate: 해당 없음
+    status: implemented
+
+  - name: /harness/estop
+    kind: service
+    type: std_srvs/Trigger
+    group: harness
+    publisher: scenario_node
+    subscribers: [사람]
+    rate: 해당 없음
+    status: implemented
+
+  # ===== platform (로봇/ROS 가 제공, rosbag 기록용) =====
+  - name: /<robot>/odom
+    kind: topic
+    type: nav_msgs/Odometry
+    group: platform
+    publisher: 로봇 베이스 드라이버
+    subscribers: [rosbag, lane_node, lane_follow_node, park_node]
+    rate: 30Hz(bringup 타이머 1/30초, 소스확인)
+    status: external
+    recorded: true
+    note: 핑키프로 bringup 이 발행(엔코더 기반, frame odom → base_footprint). lane_node(distance 곡률, 15b)와 lane_follow_node([18단계] GapKeeper 의 자기 속도)가 구독한다. 학습 라벨의 실제 속도/각속도는 cmd_vel(명령값) 대신 이 값을 쓰는 방안을 (5)에서 정한다. wheel_separation 이 launch 0.0961 m 와 URDF 0.0811 m 로 달라 실측 전에는 odom 회전량을 믿지 말 것(미확인).
+
+  - name: /<robot>/imu_raw
+    kind: topic
+    type: sensor_msgs/Imu
+    group: platform
+    publisher: "로봇 IMU 드라이버 (가제보는 브리지 imu_raw, gazebo_robots.yaml)"
+    subscribers: [lane_follow_node]
+    rate: 미확인
+    status: external
+    recorded: false
+    note: "[20단계 D 진단, 2026-11-20] lane_follow_node 가 진단 CSV(AV_LC_DEBUG_CSV)가 켜진 때만 구독해 자이로 z 적분·방향 yaw 를 CSV 열(imu_gyro_yaw, imu_q_yaw)에만 기록한다(제어에는 쓰지 않음, odom 헤딩 추정과 비교 목적). 가제보 IMU 에 방향(orientation)이 들어오는지, 자이로 바이어스·노이즈가 어떤지는 미확인. 실물 핑키프로 IMU 토픽 이름은 확인하지 못했다(미확인)."
+
+  - name: /<robot>/scan
+    kind: topic
+    type: sensor_msgs/LaserScan
+    group: platform
+    publisher: 로봇 라이다 드라이버
+    subscribers: [rosbag, front_gap_node]
+    rate: 미확인
+    status: external
+    recorded: true
+    note: 라이다(sllidar C1, frame rplidar_link)는 bringup 에 있으나 토픽 이름은 launch 에서 확인하지 못했다(/scan 추정, 미확인). [18단계] front_gap_node 가 앞차 거리에 쓴다(가제보 로봇은 <접두어>/scan 으로 발행, 장착 x −0.017 m yaw π). 주기도 미확인.
+
+  - name: /tf
+    kind: topic
+    type: tf2_msgs/TFMessage
+    group: platform
+    publisher: 로봇/ROS
+    subscribers: [rosbag]
+    rate: 30Hz(odom→base_footprint, 소스확인)
+    status: external
+    recorded: true
+    note: 전역 /tf 에 frame 이름(odom, base_footprint)이 고정돼 있어 같은 DDS 도메인에서 두 로봇을 동시에 켜면 충돌할 수 있다(코드상 추정, 실측 전). namespace 로 나눌지 ROS_DOMAIN_ID 로 나눌지는 사용자 결정 대기.
+
+  - name: /tf_static
+    kind: topic
+    type: tf2_msgs/TFMessage
+    group: platform
+    publisher: 로봇/ROS
+    subscribers: [rosbag]
+    rate: 미확인
+    status: external
+    recorded: true
+
+  # ===== gate (주유소) — 오늘 범위 밖 =====
+  - name: /gate/state
+    kind: topic
+    type: fuel_msgs/GateState
+    group: gate
+    publisher: gate_node
+    subscribers: [lane_follow_node(gate_check=true 일 때만 사용)]
+    rate: 10Hz (코드 타이머 0.1초)
+    depth: 10
+    status: out_of_scope
+    recorded: true
+    note: 범위 밖인데 topics.yaml 기록 목록에 남아 있다(후속 정리 후보). gate_controller 는 COLCON_IGNORE 로 빌드 제외.
+
+  - name: /gate/ultrasonic_cm
+    kind: topic
+    type: std_msgs/Float32
+    group: gate
+    publisher: 초음파 센서 브리지(별도)
+    subscribers: [gate_node]
+    rate: 미확인
+    depth: 10
+    status: out_of_scope
+
+  - name: /topview/image_raw
+    kind: topic
+    type: sensor_msgs/Image
+    group: gate
+    publisher: 탑뷰 카메라
+    subscribers: [gate_node]
+    rate: 미확인
+    depth: 5
+    status: out_of_scope
+
+  - name: /gate/request_enter
+    kind: service
+    type: fuel_msgs/RequestEnter
+    group: gate
+    publisher: gate_node
+    subscribers: [로봇]
+    rate: 해당 없음
+    status: out_of_scope
+
+  - name: /gate/release
+    kind: service
+    type: fuel_msgs/Release
+    group: gate
+    publisher: gate_node
+    subscribers: [로봇]
+    rate: 해당 없음
+    status: out_of_scope
+
+  - name: /<robot>/perception/gate_signal
+    kind: topic
+    type: fuel_msgs/GateState
+    group: gate
+    publisher: gate_signal_node
+    subscribers: []
+    rate: 카메라 프레임마다(이벤트)
+    depth: 10
+    status: out_of_scope
+    note: 신호 인식 노드(코드 있음, 구독자 없음).

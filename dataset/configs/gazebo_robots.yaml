@@ -1,0 +1,59 @@
+# =============================================================================
+# gazebo_robots.yaml — 로봇·프로파일·토픽 접두어의 단일 기준 (9단계 가제보 2대 → 12단계 접두어 규칙 변경)
+#
+# ▸ 읽는 곳: src/data_tools/data_tools/gazebo_robots.py 한 곳. 이 모듈을 가제보(launch/av_*.launch.py, gazebo_sim.sh),
+#            주행 노드(run_robot.sh), bag 기록/변환(record_bag.sh, bag_to_dataset.py), 하네스(scenario_node, case_runner_node)가 쓴다.
+#            이름은 'gazebo_' 로 시작하지만 실제 로봇에도 같은 규칙을 쓴다.
+# ▸ 단위: 위치 m, 각도 도(deg) 표기. 좌표는 arena.yaml 의 world 좌표(원점 = 트랙 타원 중심, +x 오른쪽, +y 위).
+# ▸ 로봇 식별자(robot_a, robot_b)와 프로파일(T00/T10/T15 = 트레일러 0/10/15cm 의 주행·학습 조건)은 서로 독립이다.
+#   어떤 로봇이 어떤 프로파일로 시작하고 언제 바뀌는지는 configs/run_presets.yaml(조합 + 이벤트)이 정한다.
+#
+# ---------------------------------------------------------------------------
+# 토픽 접두어 모드 (12단계, 사용자 결정 2026-11-19)
+#   robot_profile (기본) : /{로봇 글자}{프로파일 소문자}/...   예) robot_a+T00 → /at00/cmd_vel, robot_b+T00 → /bt00/cmd_vel,
+#                          robot_b+T10 → /bt10/cmd_vel, robot_a+T15 → /at15/cmd_vel.  같은 프로파일 두 대(T00+T00)도 겹치지 않는다.
+#   none                 : 접두어 없음 → /cmd_vel, /odom, /scan ... (핑키 기본 bringup 과 같은 모양). 토픽이 겹치므로 **로봇 한 대일 때만**.
+#                          두 대 이상을 none 으로 띄우려 하면 검사(gazebo_sim.sh check, 하네스 시작)가 ERROR 를 낸다.
+#   덮어쓰기: 환경변수 AV_TOPIC_PREFIX_MODE=robot_profile|none 이 이 값보다 우선한다(한 번만 바꿔 실행할 때).
+#   ⚠ 바꾸면 가제보 로봇, 주행 노드, 하네스, bag 기록을 모두 같은 값으로 다시 띄워야 한다. 각 스크립트가 시작할 때
+#     "[INFO] 토픽 접두어 모드: ... (출처: yaml|환경변수)" 를 출력한다. bag 은 meta.json 에 실제 ns 가 남아 나중에 값을 바꿔도 읽힌다.
+#   (폐기: 10단계까지의 '프로파일 기준' 방식(T00 없음, /t10, /t15)과 t00_prefix/AV_T00_PREFIX 옵션은 12단계에서 지웠다.)
+#   [11단계 해결, I-034] 접두어가 붙은 가제보 로봇은 핑키 xacro 의 gazebo reference 불일치로 라이다·카메라·IMU·바퀴 마찰 설정이 빠졌었다.
+#     launch/av_robot.launch.py 가 xacro 결과를 고쳐(gazebo_robots.fix_urdf_for_gazebo) 생성하므로 이제 모든 모드에서 센서가 나온다.
+# ---------------------------------------------------------------------------
+topic_prefix_mode: robot_profile
+
+world_name: av_arena                # arena.yaml gazebo.world_name 과 같아야 한다(검사함)
+spawn_z_m: 0.05                      # 바닥 위 생성 높이(떨어뜨리기)
+cam_tilt_deg: 0                      # 핑키 launch_sim 기본값과 같다(카메라/라이다 해상도는 핑키 URDF 그대로)
+
+# 로봇(식별자)별 고정 정보 — 시작 칸은 로봇 기준(사용자 승인 2026-11-19: robot_a → P_UP, robot_b → P_DN)
+#   방향(facing)은 [가정]: sim2d.yaml 출차 방향과 같게(P_UP 은 위(+y), P_DN 은 아래(−y)를 보고 서 있음). 바꾸려면 여기서.
+#   로봇 중심 = 칸 가운데 + (프로파일 트레일러cm/200 m)×진행방향 — SIM2D exit_setup 과 같은 식. ※ 가제보 로봇에는 트레일러 모델이 없다.
+robots:
+  robot_a: {letter: a, slot: P_UP, facing: north, note: "A. 마커 11 칸"}
+  robot_b: {letter: b, slot: P_DN, facing: south, note: "B. 마커 10 칸"}
+
+# 프로파일 = 주행·학습 조건(트레일러 길이). 속도/주시거리 등은 configs/trailer.yaml 의 같은 길이 행을 쓴다
+profiles:
+  T00: {trailer_cm: 0,  note: "트레일러 없음"}
+  T10: {trailer_cm: 10, note: "트레일러 10cm"}
+  T15: {trailer_cm: 15, note: "트레일러 15cm"}
+
+# 로봇별 브리지(접두어를 붙여 생성). 공용(clock, tf)은 여기에 넣지 않는다. 방향은 핑키 pinky_bridge.yaml 과 같다
+robot_bridge:
+  - {topic: scan,               ros_type: sensor_msgs/msg/LaserScan,  gz_type: gz.msgs.LaserScan,  direction: GZ_TO_ROS}
+  - {topic: camera/camera_info, ros_type: sensor_msgs/msg/CameraInfo, gz_type: gz.msgs.CameraInfo, direction: GZ_TO_ROS}
+  - {topic: cmd_vel,            ros_type: geometry_msgs/msg/Twist,    gz_type: gz.msgs.Twist,      direction: ROS_TO_GZ}
+  - {topic: joint_states,       ros_type: sensor_msgs/msg/JointState, gz_type: gz.msgs.Model,      direction: GZ_TO_ROS}
+  - {topic: odom,               ros_type: nav_msgs/msg/Odometry,      gz_type: gz.msgs.Odometry,   direction: GZ_TO_ROS}
+  - {topic: imu_raw,            ros_type: sensor_msgs/msg/Imu,        gz_type: gz.msgs.IMU,        direction: GZ_TO_ROS}   # [11단계] 핑키 브리지에는 없던 IMU 추가
+robot_image_topics: [camera/image_raw]   # ros_gz_image image_bridge 로 연결(접두어 붙임)
+
+# 월드 브리지(한 번만)
+world_bridge:
+  - {topic: clock, ros_type: rosgraph_msgs/msg/Clock, gz_type: gz.msgs.Clock,  direction: GZ_TO_ROS}
+  - {topic: tf,    ros_type: tf2_msgs/msg/TFMessage,  gz_type: gz.msgs.Pose_V, direction: GZ_TO_ROS}
+  # (14단계 메모) 판정용 실제 위치는 ROS 브리지로 넘기지 않는다: Pose_V → TFMessage 변환에서 모델 이름(child_frame_id)이 비어
+  #   버려(2026-11-19 PC 확인) gazebo_eval.py 가 가제보 파이썬 바인딩(gz.transport13)으로 /world/<월드>/dynamic_pose/info 를 직접 받는다.
+world_image_topics: [overhead_camera]    # arena.yaml gazebo.overhead_camera 가 true 일 때만

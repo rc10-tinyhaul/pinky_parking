@@ -1,0 +1,34 @@
+# =============================================================================
+# perception_gazebo.yaml — 가제보 아레나용 차선 인식 설정 (14단계)
+#   쓰는 곳: scripts/run_robot.sh --perception configs/perception_gazebo.yaml (scripts/gazebo_drive.sh 가 자동 지정)
+#   방식: ground_two_line (perception/lane_detector.py detect_lane_ground) — 원근 보정 + 차선 양쪽 검은 선 추적 + 직선/원호 맞춤
+#   값의 출처: 카메라 = 핑키 URDF(가제보) 1280×720, horizontal_fov 1.1519 rad, 높이 0.0654 m, 로봇 중심 앞 0.035 m, 기울기 0
+#              선 = arena.yaml(폭 20mm, 선 간격 190mm → half 0.095 m), 어두움 기준 = 2026-11-19 가제보 영상(선 V≈34, 벽 ≈83, 바닥 ≈240)
+#   단위: m, rad. 가제보 결과는 실제 로봇 성능이 아니다. 실물 카메라(기울기 8°, 조명)는 이 값으로 동작한다는 보장 없음(미검증).
+# =============================================================================
+lane:
+  method: ground_two_line
+  curvature_mode: distance   # [17단계] 기본 = distance(본 곡선을 로봇이 그 위치 − ff_lead_m 에 닿을 때 앞먹임, odom 필요) | preview(보이는 곡선 곡률을 바로)
+                             #   17단계 반복 5회(결과 전 규칙: 총 PASS → 완주 → 최대 중앙값): distance+0.15 PASS 17/30·완주 27/30·최대 중앙 1.73cm,
+                             #   preview PASS 0/30·완주 29/30·4.84cm → 총 PASS 로 distance 채택(E0121~E0132)
+  ff_lead_m: 0.15            # [16단계] distance 모드 앞먹임 앞당김(m). 결과 전 기준으로 0.05/0.10/0.15 중 0.15 선택(최대|off| 최댓값 3.04cm, 완주 5/6, PASS 3/6)
+  use_shape_hint: true       # [16단계] distance 모드에서 기억된 곡률로 모양 힌트(I-038)
+  ground:
+    image_w: 1280
+    image_h: 720
+    hfov_rad: 1.1519
+    cam_height_m: 0.0654
+    cam_x_m: 0.035
+    cam_pitch_rad: 0.0
+    d_min_m: 0.18          # 화면 맨 아래 줄 ≈ 카메라 앞 0.179 m
+    d_max_m: 0.45
+    n_rows: 20
+    v_max: 60
+    lane_half_m: 0.095
+    line_width_m: 0.02
+    tol_init_m: 0.06
+    tol_track_m: 0.03
+    max_miss: 2
+    near_max_m: 0.27       # 로봇 근처 판정 범위(카메라 앞 거리)
+    r_max_m: 5.0           # 이보다 큰 원은 직선
+    straight_rms_m: 0.00035

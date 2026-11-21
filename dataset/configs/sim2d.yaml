@@ -1,0 +1,130 @@
+# =============================================================================
+# sim2d.yaml — 파이썬 2D 시뮬레이터 설정 (데이터 등급 SIM2D)
+#
+# ▸ 2D 시뮬레이터는 "학습/평가 파이프라인이 끝까지 도는지" 확인하려는 도구다. 여기서 나온 정확도는 실제 로봇 성능이 아니다.
+# ▸ 지도 숫자는 configs/arena.yaml, 로봇 바퀴 한계는 configs/trailer.yaml(robot_limits), 트레일러 길이별 주시거리/속도는
+#   configs/trailer.yaml(params), 속도 단계는 configs/dataset_plan.yaml 을 그대로 쓴다(여기서 다시 정의하지 않는다).
+# ▸ 교사(숙련 운전자 대용) = Pure Pursuit + 트레일러 보상(꺾임 보고) + 약한 적분 보정.  M0 기준선 = Pure Pursuit 만.
+# ▸ 표시:  [가정] = 측정하지 않은 값(지어낸 값). 실제 값은 Gazebo/실물 데이터로 보정해야 한다. (TODO 보정)
+#          [소스] = 다른 설정 파일/공식 소스에서 가져온 값
+# =============================================================================
+version: 1
+data_tier: SIM2D                      # 에피소드에 기록되는 데이터 등급 표시(SYNTHETIC < SIM2D < SIM(가제보) < REAL)
+
+timing:
+  sim_dt_s: 0.02                      # 물리 적분 간격(50 Hz)
+  control_hz: 10                      # 제어/기록 주기. 데이터셋 10 Hz 와 같다(dataset_plan.yaml 의 min_len_warn 도 10 Hz 기준)
+  max_time_s: 120                     # 한 에피소드 최대 시간(안전장치)
+
+vehicle:
+  hitch_back_m: 0.07                  # [가정] 연결점이 로봇 중심에서 뒤로 떨어진 거리 = 로봇 길이(0.14)의 절반
+  trailer_width_m: 0.10               # [가정] 트레일러 폭(선 밟음 판정용). 실측 전
+  accel_limit_mps2: 0.5               # [가정] 출발/정지 가속 제한. 실제 로봇 값은 미확인
+  trailer_length_from: trailer_cm     # 트레일러 길이 L = trailer_cm / 100 [m]. [가정] 연결점에서 트레일러 축까지 거리 = 이 값
+
+hitch_disturbance:                    # 연결부 외란: 트레일러가 꺾이면 로봇 회전을 방해한다(운동학만으로는 길이별 보정이 필요 없어서 넣은 모델)
+  k_rad_s: 0.2                        # [가정·가장 중요] w_외란 = -k × (L/0.15) × sin(트레일러 꺾임) × (v/0.23). 측정한 값이 아님!
+  note: "가정치. 데이터에는 이 값이 기록된다. 실물/Gazebo 로 보정하기 전에는 정확도를 실제 성능으로 해석하지 말 것"
+
+perception_noise:                     # 카메라가 읽은 값에 섞는 잡음(제어기와 기록이 모두 잡음 섞인 값을 본다)
+  offset_cm_std: 0.2                  # [가정]
+  heading_rad_std: 0.005              # [가정]
+
+controller:                           # 시뮬레이션 안의 '숙련 운전자(교사)' = Pure Pursuit + 적분 보정
+  preview_m: 0.10                     # [가정] 곡률을 현재 위치보다 이만큼 앞에서 읽는다(차선 인식이 앞을 본다고 가정)
+  ff_gain: 1.0                        # Pure Pursuit 곡률 feed-forward 이득
+  max_omega: 2.0                      # Pure Pursuit 각속도 제한(rad/s)
+  ki_rad_s_per_m_s: 0.5               # 적분 보정 이득: w_보정 = -ki × ∫offset dt  (offset 단위 m). 크게 하면 흔들려서 작게 둔다
+  comp_gain: 0.9                      # [가정] 교사의 트레일러 보상 정확도: 연결부 외란의 90% 를 미리 상쇄(트레일러 꺾임을 보고 돌린다). 1.0 이면 완벽
+  corr_clip_rad_s: 0.5                # 보정 크기 제한 = model_spec.yaml 의 M1 clip 과 같은 값(0.5)
+
+episodes:
+  seed: 0
+  laps: 1.0                           # 차선 주행 에피소드 길이(바퀴 수)
+  reps_per_combo: 3                   # (길이 × 트랙 × 속도) 조합마다 반복 횟수
+  speed_levels: [normal, slow]        # 실제 m/s 는 dataset_plan.yaml 의 speed_mps, 단 trailer.yaml 의 max_speed_mps 를 넘지 않는다
+  start_offset_cm_std: 1.0            # 시작 위치 흩뿌림
+  start_heading_rad_std: 0.03
+  max_abs_offset_cm: 25               # 이보다 벗어나면 그 에피소드는 '이탈 실패'로 버리고 개수를 보고한다
+
+exit:                                 # 출차 시나리오(사용자 확정 2026-11-18): T00 은 P_UP → 1번 트랙, T10 은 P_DN → 1번 트랙 합류 후 2번 트랙
+  speed_level: slow
+  reps: 3
+  curvature_max_1pm: 6.0              # 출차 곡선 최대 곡률(반지름 약 17cm). 주차칸(x=0)에서 1번 차선(x=0.405)으로 U턴하면 약 5.5 가 필요하다.
+                                      # 느린 속도 0.15 m/s 에서 보정 각속도 0.5 를 더해도 바퀴 한계를 넘는 곡률은 약 15 이상이라 여유가 있다(테스트가 검사)
+  after_join_m: 2.0                   # 1번 트랙 합류 뒤 더 달리는 거리(T10 은 그 안에서 2번 트랙으로 차선변경)
+  profiles:
+    T00: {trailer_cm: 0,  facing: north, target_lane: 1}   # 칸 배정(P_UP)은 arena.yaml parking.assignment. [가정] 주차 방향: 위쪽(+y)을 보고 서 있다
+    T10: {trailer_cm: 10, facing: south, target_lane: 2}   # 칸 배정(P_DN)은 arena.yaml. [가정] 아래쪽(-y)을 보고 서 있고 뒤(위쪽)에 트레일러 10cm
+
+enter:                                # [4단계] 입차 시나리오(사용자 확정 2026-11-18 "입차방향 (A)"): 전진 입차, 출차 때와 '반대 방향'을 보고 주차
+  speed_level: slow
+  reps: 3
+  curvature_max_1pm: 8.0              # 입차 곡선 최대 곡률. 출차(6.0)보다 크게 둔다: 칸 앞 직선을 0.2m 확보해야 트레일러(15cm)가 칸 안에서 펴진다. 느린 속도(0.15)에서 바퀴 한계 여유는 테스트가 검사
+  start_lane: 1                       # [가정] 입차 경로 자체는 1번 트랙에서 시작한다. 2번 트랙에서 오는 경우는 아래 chain 섹션(2→1 차선변경 후 연결)
+  prefix_m: 1.0                       # 입차 곡선 앞에서 1번 차선을 달리는 거리(출발 안정화용)
+  tail_m: 0.08                        # 목표점 뒤로 이어 붙이는 직선(경로가 끊기지 않게). 정지는 목표점에서 한다.
+  straight_in_m: 0.20                 # 칸 입구 앞 마지막 직선 진입 거리. 0.10m 이면 15cm 트레일러가 꺾인 채(약 50°) 멈춰 칸 밖으로 43mm 튀어나왔고, 0.30m 는 곡률 10 이하로도 불가능했다
+  lookahead_cm: 10                    # [가정] 입차(정밀 주차)용 주시거리. 트레일러표(25~33cm)로는 정지 오차 약 3.5cm 로 2cm 기준을 못 맞춰서(리포트에 비교 출력) 짧게 둔다.
+                                      # 데이터에는 이 값이 'lookahead_cm' 으로 기록되고, 학습(train_residual)은 기록된 값으로 ω_pp 를 계산한다.
+  decel_mps2: 0.3                     # [가정] 정지 감속(< 차량 가속 제한 0.5)
+  success_stop_error_cm: 2.0          # 입차 성공: 정지 위치 오차 ≤ 2.0cm (하네스 testcases 의 기준과 같다)
+  profiles:                           # 칸 배정: T00/T10 은 arena.yaml parking.assignment 와 같은 칸('제자리'), T15 는 [가정] P_UP
+    T00: {trailer_cm: 0,  slot: P_UP, facing: south}   # 출차는 north → 입차는 south
+    T10: {trailer_cm: 10, slot: P_DN, facing: north}   # 출차는 south → 입차는 north
+    T15: {trailer_cm: 15, slot: P_UP, facing: south}   # 몸 전체 290mm 가 칸 300mm 안에 들어가는지 여유 5mm — 칸 밖 돌출 여부를 보고한다
+
+lane_change:                          # [4단계] 직선 구간 차선변경 (1→2, 2→1 양방향)
+  speed_level: normal
+  reps: 3                             # (길이 × 방향) 마다 반복. 짝수 번째는 오른쪽 직선, 홀수 번째는 왼쪽 직선
+  pre_m: 1.2                          # 차선변경 전 달리는 거리
+  post_m: 1.2                         # 차선변경 후 달리는 거리
+  final_offset_ok_cm: 3.0             # 변경이 끝난 뒤 마지막 0.3m 평균 |offset| 이 이보다 크면 '정착 못함' 경고(하네스 직선 기준과 같은 3.0)
+  # 변경 길이는 trailer.yaml params.lane_change_len_cm 를 쓴다. 직선(0.6m) 가운데에 걸치도록 시작점을 잡는다(길이가 직선보다 길면 반원에 걸침).
+
+chain:                                # [6단계] 2번 트랙 → (직선에서 2→1 차선변경) → 입차 연결 평가. 평가 전용: 데이터셋(npz)에는 저장하지 않는다
+  profiles: [T00, T10, T15]           # 입차 프로필(enter.profiles) 이름. 시연 순서의 "B(T10) 가 2번 트랙에서 주유 후 제자리로 주차" 가 T10
+  reps: 3                             # 프로필마다 반복(출발 흩뿌림/센서 잡음 시드가 다름)
+  start_lane: 2                       # 출발 트랙
+  pre_m: 1.2                          # 차선변경 전 2번 트랙을 달리는 거리(lane_change.pre_m 과 같은 값)
+  speed_level: normal                 # 차선변경 구간 속도. 입차 경로가 시작되면 enter.speed_level(느림)로 바뀌고 주시거리도 enter.lookahead_cm 로 바뀐다
+                                      # (주행 모드 → 입차 모드 전환. 전환 위치 = 입차 경로 시작점. [가정] 실제 전환 신호는 위치/지도 기반으로 별도 설계 필요)
+
+gap:                                  # [4단계] 앞뒤 간격 조절: 2번 트랙에서 앞차(리더)와 뒤차(팔로워) 2대
+  track: 2
+  duration_s: 22.0
+  initial_gap_cm: 40.0                # 시작 간격(팔로워 앞 범퍼 ~ 리더 뒤끝(트레일러 포함))
+  target_gap_cm: 10.0                 # [사용자 결정 2026-11-18] 앞차가 서면 이 간격에서 정지(정지 후 대기 간격)
+  safe_gap_cm: 15.0                   # [사용자 결정 2026-11-18] 주행 중 안전거리. 최고 속도 주행 중 간격이 이보다 작아지면 안 된다(지표 cruise_min_gap_cm)
+  gap_noise_cm_std: 1.5               # [가정] 라이다 거리 잡음 σ. sllidar C1 정확도 ±30mm(제조사) 를 2σ 로 본 값(이전 0.5cm 는 낙관적). 라이다 자체는 흉내 내지 않는다
+  cmd_delay_s: 0.1                    # [가정] 속도 명령이 바퀴에 적용되기까지 지연(1 제어 주기). keeper.latency_s(0.25) = 제어 주기 0.1 + 이 지연 0.1 + 여유 0.05
+  keeper:                             # planning_control/gap_keeper.py 기본값 그대로 (감속도/지연은 가정, 핑키프로 실측 필요)
+    {kp: 0.004, decel_mps2: 0.3, latency_s: 0.25, margin_cm: 2.0, cap_margin_cm: 2.0, alpha: 0.5, beta: 0.12, noise_cm: 1.5}
+  lead_events:                        # 리더 속도 = 리더 최대 속도 × v_mult, t 초부터 적용
+    - {t: 0.0,  v_mult: 1.0}
+    - {t: 5.0,  v_mult: 0.5}          # 감속
+    - {t: 10.0, v_mult: 0.0}          # 정지
+    - {t: 14.0, v_mult: 1.0}          # 재출발
+  pairs: [[10, 0], [0, 10], [15, 10]] # [리더 트레일러 cm, 팔로워 트레일러 cm]. 첫 번째는 시연 "T10 앞, T00 뒤"
+  reps: 3
+  instant_stop:                       # [5단계] 앞차 즉시 정지(감속 없이) 시나리오. 데이터셋에는 저장하지 않고 평가/보고만 한다
+    t_stop_s: 6.0                     # 이 시각에 리더 속도를 0 으로(그 전까지는 lead_speed_mult 로 달림)
+    duration_s: 14.0
+    initial_gaps_cm: [16.0, 25.0, 40.0]
+    lead_speed_mult: [1.0, 0.7]
+    reps: 2
+    min_gap_ok_cm: 2.0                # 통과 기준: 충돌 없음 + 최소 간격이 이 값 이상
+
+report:
+  baseline_compare: true              # 같은 조건에서 '보정 없는 Pure Pursuit 만' 돌려 트레일러 영향(길이별 오차)을 같이 보고한다
+
+closed_loop:                          # [7단계] 폐루프 비교: 교사 vs M0(Pure Pursuit 만) vs M0+M1(학습한 잔차를 더함). 평가 전용(데이터셋 미저장)
+  model: models/residual_demo_L10_15_v0.npz  # [I-023 후속] 10/15cm 만 학습한 M1(0cm 는 꺼짐): train.sh ... --lengths 10,15 --out 이 경로. 전체 길이 모델(models/residual_demo_v0.npz)은 --model 로 지정. 라벨이 omega_actual 이면 경고
+  seed_base: 20000                    # 평가 시드 시작값. 학습 데이터 시드(episodes.seed=0 부터 ~100 개)와 겹치지 않는 범위
+  reps: 3                             # (시나리오 × 길이) 마다 반복. 세 운전자는 같은 시드(같은 시작 위치/잡음)로 돈다
+  lengths: [0, 10, 15]
+  lane: {laps: 1.0, tracks: [1, 2], speed_level: normal}
+  gate:                               # 폐루프 통과(ADOPT) 기준 — 모델이 적용되는 길이만 본다 [가정: 제가 정한 기준, 바꿀 수 있음]
+    min_gain_pct: 5.0                 #  ① 차선 주행+차선변경 평균 |offset| 이 M0 보다 이만큼(%) 이상 줄어야 함(전체)
+    worse_tol_cm: 0.02                #  ② 길이별 평균 |offset| 이 M0 보다 이 값(cm)보다 더 나빠지면 안 됨
+                                      #  ③ 이탈(실패) 수가 M0 보다 늘면 안 됨  ④ 입차/연결 성공 수가 M0 보다 줄면 안 됨

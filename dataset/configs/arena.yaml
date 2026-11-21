@@ -1,0 +1,78 @@
+# =============================================================================
+# arena.yaml — 시연/수집 구역 지도 기준표 (단일 기준). 출처: 사용자 제공 arena_map_2000x2000.pdf (docs/maps/)
+#
+# ▸ 이 파일이 "지도 숫자의 기준"이다. 아래 검사가 이 파일 ↔ PDF ↔ 로봇 한계 ↔ 문서를 대조한다:
+#     ./scripts/check_arena.sh            (docs/ARENA.md 의 표는 --write-doc 로 이 파일에서 자동 생성)
+# ▸ 단위는 mm (프로젝트의 다른 설정은 cm 를 쓰므로 옮길 때 /10 주의).
+# ▸ 좌표계(world): 원점 = 트랙 타원 중심, +x = 오른쪽, +y = 위(지도에서 위쪽), 반시계(ccw) 주행.
+#     PDF 페이지 좌표(왼쪽 아래 기준) → world:  x_w = x_p − page_origin_mm[0],  y_w = y_p − page_origin_mm[1]
+# ▸ 사각형/선의 좌표는 PDF 에 그려진 '선 중심(stroke 중심)' 기준이다. 선 두께는 line_width_mm.
+# ▸ 트랙 번호 규칙(2026-11-18 확정): 0 = 트랙 밖(주차장/주유구역), 1 = 안쪽 차선, 2 = 바깥 차선. 3번 트랙은 없다.
+# 표시: [PDF] = PDF 에서 숫자로 확인한 값 / [추정] = 해석이라 현장 확인 필요
+# =============================================================================
+version: 1
+source_pdf: docs/maps/arena_map_2000x2000.pdf
+
+floor:                                  # [PDF] 실제 바닥 크기
+  width_mm: 2000
+  height_mm: 2000
+  margin_mm: 100                        # 지도 가장자리 여백 표시선(회색 점선)
+  page_origin_mm: [1200, 1000]          # world 원점이 PDF 페이지(왼쪽 아래 기준)에서 놓인 위치
+
+track:                                  # [PDF] 세로로 긴 타원(stadium): 위/아래 반원 + 좌/우 직선
+  straight_mm: 600                      # 직선 구간 길이(반원 중심 사이 거리). 직선은 x = ±중심반지름, |y| ≤ 300
+  line_width_mm: 20
+  line_radius_mm: [310, 500, 690]       # 검은 선 3개의 중심선 반지름(안쪽 → 바깥쪽)
+  lane_pitch_mm: 190                    # 인접 선 사이 간격(선 중심 기준). 선 사이 빈 폭 = 190 − 20 = 170
+  direction: ccw                        # 오른쪽 직선은 위로, 왼쪽 직선은 아래로 진행
+  lanes:
+    1: {center_radius_mm: 405, label: "1번 트랙 R405", profiles: [T00]}          # 지도 표기. 수집 때는 모든 프로파일이 돈다
+    2: {center_radius_mm: 595, label: "2번 트랙 R595", profiles: [T10, T15]}
+  collection_lanes: {T00: [1, 2], T10: [1, 2], T15: [1, 2]}   # 데이터 수집: 전반적인 회전/속도를 보려고 1·2번 트랙 모두 돈다(사용자 확정)
+  demo_lanes: {T00: [1, 2], T10: [2], T15: [2]}               # 시연: T10/T15 는 2번 트랙만, T00 은 차선변경 때문에 1·2번
+
+parking:                                # [PDF] 주차장 190×300 두 칸(트랙 안쪽 가운데, 세로로 붙어 있음). 박스 = 선 중심 기준
+  line_width_mm: 20
+  slots:
+    - {id: P_UP, x_mm: [-95, 95], y_mm: [0, 300]}
+    - {id: P_DN, x_mm: [-95, 95], y_mm: [-300, 0]}
+  assignment:                           # 시연 시작 상태(사용자 확정 2026-11-18): 주차된 상태에서 출차부터 시작. 마커는 칸 옆 번호 사각형
+    T00: {slot: P_UP, marker: 11}       # T00 은 위 칸 → 출차 후 1번 트랙에 합류
+    T10: {slot: P_DN, marker: 10}       # T10 은 아래 칸 → 출차 후 1번 트랙을 지나 2번 트랙으로 차선변경
+  slot_size_mm: [190, 300]              # 가로 × 세로
+  min_trailer_margin_mm: 20             # 트레일러 포함 전체 길이가 칸 길이보다 이만큼은 짧아야 편하게 들어간다(초안). 모자라면 WARN
+
+fuel:                                   # [PDF] 주유구역(트랙 밖, 2번 트랙 왼쪽 바깥)
+  line_width_mm: 20
+  box: {x_mm: [-1090, -900], y_mm: [-375, -25]}      # 190×350
+  gap_to_outer_line_mm: 210             # 주유구역 오른쪽 선 ↔ 2번 트랙 바깥 선(반지름 690) 중심 거리
+  gap_to_lane2_center_mm: 305           # 주유구역 오른쪽 선 ↔ 2번 트랙 중심선 거리
+  blue_line: {y_mm: 45, x_mm: [-1090, -900], width_mm: 20}   # 바리게이트/진입 대기선
+
+markers:                                # [PDF] 번호 사각형 50×50. [추정] 위키의 ArUco(5×5, 50mm) 마커 자리 — 종류는 확인 필요
+  size_mm: 50
+  items:
+    - {id: 10, center_mm: [0, 0],       note: "두 주차칸 경계"}
+    - {id: 11, center_mm: [0, 300],     note: "위 주차칸 위쪽"}
+    - {id: 20, center_mm: [-995, -340], note: "주유구역 아래쪽"}
+    - {id: 30, center_mm: [-995, 95],   note: "파란 선 위"}
+
+robot:                                  # [PDF] 지도에 적힌 치수
+  size_mm: {width: 130, length: 140, height: 162}
+  total_length_mm: {0: 140, 10: 240, 15: 290}     # 트레일러 포함 전체 길이
+
+checks:
+  pdf_tolerance_mm: 1.5                 # PDF 에서 읽은 값과 이 파일의 값이 이 이상 다르면 ERROR
+  min_lane_clearance_mm: 20             # 로봇 폭과 차선 빈 폭 사이 여유(양쪽 합). 모자라면 WARN
+  floor_edge_tolerance_mm: 1.0          # 그림이 바닥 가장자리를 이 이상 벗어나면 ERROR (가장자리에 '닿는' 것은 WARN)
+  curve_headroom: model_spec            # 곡선에서 보정 각속도(Δω) 여유 기준 = configs/model_spec.yaml 의 M1 clip
+
+gazebo:                                 # 8단계: 가제보 월드 생성 설정(data_tools/gazebo_world.py). 지도 숫자는 위 섹션이 기준이고 여기는 '그리는 방식'만 정한다
+  world_name: av_arena                  # worlds/av_arena.world
+  arc_step_deg: 3.0                     # 반원을 몇 도 간격 직선 조각으로 근사할지(작을수록 정확, 조각 수 증가)
+  line_height_mm: 2.0                   # 바닥에 칠한 선 두께(높이). 충돌체 없음
+  walls: true                           # [추정] 바닥 가장자리 낮은 벽 — 라이다 지도용. 실제 아레나에 벽이 있다는 뜻이 아님
+  wall_height_mm: 200
+  wall_thickness_mm: 10
+  overhead_camera: true                 # 탑뷰 카메라(출입통제 시연용 대용). 토픽 overhead_camera
+  overhead_camera_height_m: 1.6

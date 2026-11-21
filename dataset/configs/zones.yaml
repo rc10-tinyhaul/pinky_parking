@@ -1,0 +1,15 @@
+# 구역/트랙 정의. 좌표 단위 cm, 탑뷰 카메라 이미지 픽셀 좌표(px)는 roi_* 항목. 전부 현장 실측 필요: TODO(측정)
+# 트랙/주차장/주유구역 좌표의 기준은 configs/arena.yaml(PDF 지도) 이다. 아래 tracks.spacing_cm 은 거기서 온 값(19cm)을 그대로 적은 것.
+tracks:
+  spacing_cm: 19          # 트랙 간 간격 = arena.yaml track.lane_pitch_mm 190mm (PDF 확인, 이전 가정값 20cm). 차선변경 횡이동량으로 사용
+gate:
+  sensor_mode: ultrasonic # ultrasonic | topview
+  ultrasonic_on_cm: 10    # 이 거리 이하이면 '차량 있음' (요구사항: 5~10cm)
+  ultrasonic_off_cm: 12   # 이 거리 이상이면 해제 (히스테리시스)
+  topview_roi_px: [300, 200, 460, 300]   # x1,y1,x2,y2 주유구역 ROI (탑뷰 카메라, 가정값)
+  topview_on_ratio: 0.12  # ROI 중 변화 픽셀 비율이 이 이상이면 점유
+  topview_off_ratio: 0.05 # 이 이하이면 해제
+  debounce_frames: 3
+  grant_timeout_s: 20     # 승인 후 이 시간 안에 진입하지 않으면 예약 자동 해제
+  serial_port: ""         # 예: /dev/ttyUSB0 (비우면 로그만 출력하는 드라이버 사용)
+  serial_baud: 115200

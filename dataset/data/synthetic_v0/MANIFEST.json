@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "data_dir": "/home/khe/av_track/av_track/data/synthetic_v0",
+  "created": "2026-11-19 12:39:32",
+  "run_id": "backfill",
+  "note": "13단계 이전에 만든 데이터 — 만든 실행 맥락 없음(backfill)",
+  "files": [
+    {
+      "file": "episode_L00_T1_00.npz",
+      "sha": "0196da14bec0",
+      "trailer_cm": 0,
+      "track": 1
+    },
+    {
+      "file": "episode_L00_T1_01.npz",
+      "sha": "db677b5fcd22",
+      "trailer_cm": 0,
+      "track": 1
+    },
+    {
+      "file": "episode_L00_T1_02.npz",
+      "sha": "dafe08688239",
+      "trailer_cm": 0,
+      "track": 1
+    },
+    {
+      "file": "episode_L00_T1_03.npz",
+      "sha": "c2c88bcf7239",
+      "trailer_cm": 0,
+      "track": 1
+    },
+    {
+      "file": "episode_L00_T2_00.npz",
+      "sha": "baea609ca3a2",
+      "trailer_cm": 0,
+      "track": 2
+    },
+    {
+      "file": "episode_L00_T2_01.npz",
+      "sha": "41931f14cdb5",
+      "trailer_cm": 0,
+      "track": 2
+    },
+    {
+      "file": "episode_L00_T2_02.npz",
+      "sha": "021bb616e4cb",
+      "trailer_cm": 0,
+      "track": 2
+    },
+    {
+      "file": "episode_L00_T2_03.npz",
+      "sha": "dbfdcc26a253",
+      "trailer_cm": 0,
+      "track": 2
+    },
+    {
+      "file": "episode_L10_T1_00.npz",
+      "sha": "20dabec38a6f",
+      "trailer_cm": 10,
+      "track": 1
+    },
+    {
+      "file": "episode_L10_T1_01.npz",
+      "sha": "481ba6f2789a",
+      "trailer_cm": 10,
+      "track": 1
+    },
+    {
+      "file": "episode_L10_T1_02.npz",
+      "sha": "2eadf9f3c798",
+      "trailer_cm": 10,
+      "track": 1
+    },
+    {
+      "file": "episode_L10_T1_03.npz",
+      "sha": "e47824b1acdf",
+      "trailer_cm": 10,
+      "track": 1
+    },
+    {
+      "file": "episode_L10_T2_00.npz",
+      "sha": "a97d1cedc237",
+      "trailer_cm": 10,
+      "track": 2
+    },
+    {
+      "file": "episode_L10_T2_01.npz",
+      "sha": "d3b57e5772d3",
+      "trailer_cm": 10,
+      "track": 2
+    },
+    {
+      "file": "episode_L10_T2_02.npz",
+      "sha": "3de4c6b23c40",
+      "trailer_cm": 10,
+      "track": 2
+    },
+    {
+      "file": "episode_L10_T2_03.npz",
+      "sha": "340de5d49d2c",
+      "trailer_cm": 10,
+      "track": 2
+    },
+    {
+      "file": "episode_L15_T1_00.npz",
+      "sha": "91b640e7f13d",
+      "trailer_cm": 15,
+      "track": 1
+    },
+    {
+      "file": "episode_L15_T1_01.npz",
+      "sha": "cf07c1302819",
+      "trailer_cm": 15,
+      "track": 1
+    },
+    {
+      "file": "episode_L15_T1_02.npz",
+      "sha": "43fc2be37f60",
+      "trailer_cm": 15,
+      "track": 1
+    },
+    {
+      "file": "episode_L15_T1_03.npz",
+      "sha": "ff12c30c4f00",
+      "trailer_cm": 15,
+      "track": 1
+    },
+    {
+      "file": "episode_L15_T2_00.npz",
+      "sha": "7331611ef151",
+      "trailer_cm": 15,
+      "track": 2
+    },
+    {
+      "file": "episode_L15_T2_01.npz",
+      "sha": "fbc2999bcc3c",
+      "trailer_cm": 15,
+      "track": 2
+    },
+    {
+      "file": "episode_L15_T2_02.npz",
+      "sha": "76a9665fa86c",
+      "trailer_cm": 15,
+      "track": 2
+    },
+    {
+      "file": "episode_L15_T2_03.npz",
+      "sha": "a41405064043",
+      "trailer_cm": 15,
+      "track": 2
+    }
+  ],
+  "tiers": [
+    "UNKNOWN"
+  ],
+  "trailer_cms": [
+    0,
+    10,
+    15
+  ],
+  "robots": [],
+  "profiles": [],
+  "manifest_sha": "9f54ee1ca773",
+  "history": []
+}

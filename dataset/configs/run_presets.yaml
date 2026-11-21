@@ -1,0 +1,34 @@
+# =============================================================================
+# run_presets.yaml — 실행 조합(로봇별 시작 프로파일) + 끼워넣는 이벤트 + 프리셋 (12단계, 사용자 승인 2026-11-19)
+#
+# 목적: 시나리오 S0~S8(configs/scenario_s0_s8.yaml, 단계별 트랙/모드만 정의)에 '어떤 로봇이 어떤 프로파일로 시작하고,
+#       어느 단계에서 무엇으로 바뀌는지'를 따로 조합한다. 시연 방법을 바꿀 때 시나리오 파일은 그대로 두고 여기만 바꾼다.
+#   profile_sets : 시작 조합. 로봇 식별자 → 프로파일(T00/T10/T15). 같은 프로파일 두 대(set1)도 가능(토픽은 /at00, /bt00 으로 구분)
+#   events       : 끼워넣을 수 있는 이벤트. 지금은 type: profile_switch 하나(at_step 단계에 들어갈 때 robot 을 to 프로파일로).
+#                  'from' 은 적지 않는다 — 그 단계 직전 프로파일에서 자동으로 계산한다(조합이 바뀌어도 이벤트를 재사용하려고).
+#   presets      : 이름 붙인 묶음 = set + events 목록. 실행할 때 --preset 이름 으로 고른다.
+#   default_preset : 아무것도 안 주면 쓰는 프리셋.
+# 실행할 때 고르는 법(모든 스크립트가 같은 옵션을 받는다 — 같은 값으로 띄워야 토픽이 이어진다):
+#   --preset <이름>                      예) ./scripts/run_harness.sh --preset demo --trailer-switch auto-full
+#   --set <조합> [--events e1,e2]        예) ./scripts/gazebo_sim.sh --all --set set1      (프리셋 없이 직접 조합)
+#   S4 같은 전환을 '어떻게' 할지는 run_harness.sh --trailer-switch manual|auto-harness|auto-full (기본 manual)
+# 검사(data_tools/run_presets.py validate, 실행 시작 때 자동): 없는 단계/로봇/프로파일, 같은 단계에서 같은 로봇 두 번 전환,
+#   이미 그 프로파일인데 전환(효과 없음 → WARN). 실행 로그에 '단계별 로봇 프로파일 표'를 남긴다.
+# 단위: 트레일러 길이 cm(프로파일 정의는 configs/gazebo_robots.yaml profiles).
+# 가정: 가제보 로봇에는 트레일러 모델이 없다 — 프로파일은 주행 조건(속도/주시거리/M1 적용 길이)과 토픽 이름만 바꾼다.
+# =============================================================================
+version: 1
+
+profile_sets:
+  set1: {robot_a: T00, robot_b: T00}      # 둘 다 트레일러 없음
+  set2: {robot_a: T00, robot_b: T10}      # 시연 시작 조합(예전 S0 와 같음)
+
+events:
+  a_swap_t15: {type: profile_switch, at_step: S4, robot: robot_a, to: T15, note: "시연: A 주유 후 트레일러 0→15cm"}
+
+presets:
+  demo:     {set: set2, events: [a_swap_t15], note: "시연 시나리오(예전 scenario_s0_s8.yaml 의 trailer_cm 과 같은 결과)"}
+  drive_s1: {set: set1, events: [],           note: "주행 시험: A T00 + B T00, 전환 없음"}
+  drive_s2: {set: set2, events: [],           note: "주행 시험: A T00 + B T10, 전환 없음"}
+
+default_preset: demo

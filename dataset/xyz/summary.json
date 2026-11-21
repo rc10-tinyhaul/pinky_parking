@@ -1,0 +1,20 @@
+{
+ "run_id": "R20261120_215903_7933_demo_scenario",
+ "from": 1,
+ "upto": 8,
+ "verdict": "FAIL",
+ "step_verdicts": {
+  "1": "PASS",
+  "2": "PASS",
+  "3": "PASS",
+  "4": "PASS",
+  "5": "FAIL",
+  "6": "FAIL",
+  "7": "PASS",
+  "8": "PASS"
+ },
+ "reasons": [
+  "[5] b 차선변경 2→1: FAIL — shortcut: 2→1 차선변경은 입차 경로([6])에 포함 — 정지 위치 오차 2.0cm > 2.0cm",
+  "[6] b 입차(P_DN): FAIL — 정지 위치 오차 2.0cm > 2.0cm"
+ ]
+}

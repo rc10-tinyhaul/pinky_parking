@@ -1,0 +1,79 @@
+[INFO] 토픽 접두어 모드: robot_profile — /{로봇글자}{프로파일} 예 /at00 (출처: yaml)
+[INFO] 로봇 robot_b, 프로파일 T10, 토픽 접두어 '/bt10' → /bt10/cmd_vel 발행
+[INFO] 시작 트레일러 길이 10cm (프로파일 T10)
+[INFO] 실행 맥락 R20261120_220211_8364_run_robot_robot_b_T10 → logs/runs/R20261120_220211_8364_run_robot_robot_b_T10.context.json
+[INFO]   접두어 robot_profile(yaml), 프리셋 -(조합 -, 이벤트 -), 로봇 robot_b:T10:/bt10, 전환 -, 코드 f5cd75dd/22bf9f13, 설정 91602d60
+[INFO]   추가: keep_gap_cm=10.0;model=;ns=/bt10;perception=configs/perception_gazebo.yaml;trailer_cm=10
+[INFO] 앞차 거리 노드 시작: /bt10/scan → /bt10/front_gap_cm (간격 목표 10.0cm)
+[INFO] [1795179735.029155662] [bt10.front_gap_node]: 시작: 라이다 장착 (-0.017, 0.0, 3.14159265), 통로 반폭 0.06 m, 앞 범퍼 0.07 m, 최대 1.0 m (설정 /home/khe/av_track/av_track/configs/gazebo_gap.yaml)
+[INFO] [1795179735.811551311] [bt10.lane_node]: 차선 검출 방식: ground_two_line (/home/khe/av_track/av_track/configs/perception_gazebo.yaml)
+[INFO] [1795179736.273250197] [bt10.lane_node]: 곡률 앞먹임 모드: distance, 앞당김 0.15 m, 모양 힌트 True
+[INFO] [1795179736.511734516] [bt10.lane_follow_node]: 시작: 잔차모델 없음(기준선만), 시작 트레일러 10cm
+[INFO] [1795179758.399455307] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.9cm 신뢰도 1.00 → 직전 채택 0.6cm 신뢰도 1.00 유지(t=83.46s)
+[INFO] [1795179758.532761121] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 1프레임, 되돌림 0회)
+[INFO] [1795179758.696730494] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 4.5cm 신뢰도 1.00 → 직전 채택 1.0cm 신뢰도 1.00 유지(t=83.52s)
+[INFO] [1795179759.396666451] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 7프레임, 되돌림 0회)
+[INFO] [1795179769.564809794] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -2.7cm 신뢰도 1.00 → 직전 채택 0.7cm 신뢰도 1.00 유지(t=86.33s)
+[INFO] [1795179770.897433363] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 17프레임, 되돌림 0회)
+[INFO] [1795179772.925639119] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 6.2cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=87.15s)
+[INFO] [1795179773.082172581] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 18프레임, 되돌림 0회)
+[INFO] [1795179801.370715576] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.7cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=94.18s)
+[INFO] [1795179802.734441214] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 28프레임, 되돌림 0회)
+[INFO] [1795179812.758062655] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -3.2cm 신뢰도 1.00 → 직전 채택 0.1cm 신뢰도 1.00 유지(t=97.02s)
+[INFO] [1795179814.011527683] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 37프레임, 되돌림 0회)
+[INFO] [1795179844.481420040] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.7cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=104.91s)
+[INFO] [1795179845.923652820] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 48프레임, 되돌림 0회)
+[INFO] [1795179856.401107936] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -2.8cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=107.81s)
+[INFO] [1795179857.767311338] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 58프레임, 되돌림 0회)
+[INFO] [1795179899.785245261] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.8cm 신뢰도 1.00 → 직전 채택 0.1cm 신뢰도 1.00 유지(t=118.44s)
+[INFO] [1795179901.797819020] [bt10.lane_follow_node]: [lane_gate] 보류 끝: resync(누적 보류 73프레임, 되돌림 1회)
+[INFO] [1795179918.982063532] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -3.3cm 신뢰도 1.00 → 직전 채택 0.2cm 신뢰도 1.00 유지(t=123.22s)
+[INFO] [1795179920.985268316] [bt10.lane_follow_node]: [lane_gate] 보류 끝: resync(누적 보류 88프레임, 되돌림 2회)
+[INFO] [1795179973.065918094] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.5cm 신뢰도 1.00 → 직전 채택 -0.1cm 신뢰도 1.00 유지(t=136.32s)
+[INFO] [1795179975.004847139] [bt10.lane_follow_node]: [lane_gate] 보류 끝: resync(누적 보류 103프레임, 되돌림 3회)
+[INFO] [1795179992.571769393] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -2.9cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=141.21s)
+[INFO] [1795179994.667073921] [bt10.lane_follow_node]: [lane_gate] 보류 끝: resync(누적 보류 118프레임, 되돌림 4회)
+[INFO] [1795179998.691707430] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 6.4cm 신뢰도 1.00 → 직전 채택 0.4cm 신뢰도 1.00 유지(t=142.69s)
+[INFO] [1795179998.856621960] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 119프레임, 되돌림 4회)
+[INFO] [1795180041.832550228] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.5cm 신뢰도 1.00 → 직전 채택 0.2cm 신뢰도 1.00 유지(t=153.19s)
+[INFO] [1795180042.165543092] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 121프레임, 되돌림 4회)
+[INFO] [1795180042.191117882] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 4.3cm 신뢰도 1.00 → 직전 채택 1.1cm 신뢰도 1.00 유지(t=153.29s)
+[INFO] [1795180042.938047438] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 126프레임, 되돌림 4회)
+[INFO] [1795180054.681582868] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -2.9cm 신뢰도 1.00 → 직전 채택 0.5cm 신뢰도 1.00 유지(t=156.06s)
+[INFO] [1795180056.170979525] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 136프레임, 되돌림 4회)
+[INFO] [1795180058.498512204] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 6.2cm 신뢰도 1.00 → 직전 채택 0.2cm 신뢰도 1.00 유지(t=156.91s)
+[INFO] [1795180058.697356592] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 137프레임, 되돌림 4회)
+[INFO] [1795180089.125882147] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 2.9cm 신뢰도 1.00 → 직전 채택 0.2cm 신뢰도 1.00 유지(t=163.94s)
+[INFO] [1795180090.798347883] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 149프레임, 되돌림 4회)
+[INFO] [1795180100.890770591] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset -3.6cm 신뢰도 1.00 → 직전 채택 -0.3cm 신뢰도 1.00 유지(t=166.75s)
+[INFO] [1795180102.208234886] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 159프레임, 되돌림 4회)
+[INFO] [1795180104.515530079] [bt10.lane_follow_node]: [lane_gate] 보류 시작: 인식 offset 5.9cm 신뢰도 1.00 → 직전 채택 -0.0cm 신뢰도 1.00 유지(t=167.67s)
+[INFO] [1795180104.716984921] [bt10.lane_follow_node]: [lane_gate] 보류 끝: accept(누적 보류 160프레임, 되돌림 4회)
+Traceback (most recent call last):
+  File "/home/khe/av_track/av_track/install/perception/lib/perception/lane_node", line 33, in <module>
+    sys.exit(load_entry_point('perception', 'console_scripts', 'lane_node')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/khe/av_track/av_track/src/perception/perception/lane_node.py", line 118, in main
+    rclpy.spin(node)
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py", line 247, in spin
+    executor.spin_once()
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 926, in spin_once
+    self._spin_once_impl(timeout_sec)
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 918, in _spin_once_impl
+    raise handler.exception()
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/task.py", line 286, in _execute_coroutine_step
+    result = coro.send(None)
+             ^^^^^^^^^^^^^^^
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 592, in handler
+    await call_coroutine()
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 480, in _execute
+    await await_or_execute(sub.callback, *msg_tuple)
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 115, in await_or_execute
+    return callback(*args)
+           ^^^^^^^^^^^^^^^
+  File "/home/khe/av_track/av_track/src/perception/perception/lane_node.py", line 103, in on_image
+    self.pub.publish(out)
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/publisher.py", line 70, in publish
+    self.__publisher.publish(msg)
+rclpy._rclpy_pybind11.RCLError: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[ERROR] [1795180131.949190518] [rclpy.signals]: rcl_trigger_guard_condition() failed: guard condition handle not from this implementation, at ./src/rmw_trigger_guard_condition.cpp:34, at ./src/rcl/guard_condition.c:161

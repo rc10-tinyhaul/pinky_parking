@@ -1,0 +1,69 @@
+# =============================================================================
+# model_spec.yaml — 모델 세부 설계 기준표 (2026-11-18 (4) 단계)
+#
+# ▸ 이 파일이 모델 설계의 "기준"이다. docs/MODEL.md 의 표는 여기서 자동 생성한다:
+#     ./scripts/check_model.sh --write-doc
+# ▸ ./scripts/check_model.sh 가 이 파일과 실제 코드(trailer_residual.py, trailer.yaml, testcases)를 대조한다.
+# ▸ 아래 수치(clip, 채택 기준 등)는 전부 '초안'이다. 실제 로봇 데이터로 보정해야 한다(TODO 현장 확인).
+# ▸ 실제 데이터로 학습한 적이 없다. 합성 데이터의 정확도는 파이프라인 점검용일 뿐 채택 근거가 아니다.
+# =============================================================================
+version: 1
+
+# 로봇/트레일러 전제 (configs/trailer.yaml 의 allowed_lengths_cm 과 일치해야 함 — 검사됨)
+trailer:
+  allowed_lengths_cm: [0, 10, 15]
+  max_trailer_cm: 15           # 특징 정규화 기준 (trailer_residual.MAX_TRAILER_CM 과 일치해야 함)
+  # [3단계 변경] [0, 10] → [0, 10, 15]. 시연 후반에 A 로봇이 15cm 로 바뀌고(S5~S7), 2D 시뮬레이터(SIM2D) 수집이 0/10/15cm 를 모두 만든다.
+  # 단, 실제 로봇 데이터는 아직 없다 — 이 목록은 '시뮬레이터 학습 범위'이며 실측 학습이 끝났다는 뜻이 아니다.
+  # 모델 파일(npz)에는 실제로 학습에 쓴 길이가 따로 저장되고(trained_lengths_cm), 추론은 그 파일의 값을 따른다.
+  trained_lengths_cm: [0, 10, 15]
+
+models:
+  - id: M0_baseline
+    name: Pure Pursuit 기준선
+    kind: rule              # rule = 학습 없음
+    learned: false
+    code: planning_control/pure_pursuit.py
+    inputs: [offset_cm, heading_err_rad, curvature_1pm, speed_mps, lookahead_cm]
+    output: {name: omega_pp, unit: rad/s, limit: 2.0}
+    role: 항상 존재하는 안전한 기본 제어. 모델이 없거나 적용 조건을 못 채우면 이것만 쓴다.
+
+  - id: M1_ridge_residual
+    name: 트레일러 잔차 모델 (ridge)
+    kind: ridge_regression
+    learned: true
+    code: planning_control/trailer_residual.py (추론), data_tools/train_residual.py (학습)
+    feature_version: 1
+    target: "Δω = omega_demo − ω_pp  [rad/s]"
+    output: {name: delta_omega, unit: rad/s, clip: 0.5}
+    combine: "ω = ω_pp + Δω"
+    ridge_lambda: 0.001      # 학습 옵션 기본값(초안). train_residual --lam 으로 바꾼다.
+    normalization: "학습 데이터의 평균/표준편차로 표준화 (모델 파일에 mean/std 저장)"
+    features:
+      - {name: offset_10cm,        unit: "10cm",   def: "offset_cm / 10"}
+      - {name: heading_err_rad,    unit: rad,      def: "heading_err_rad"}
+      - {name: kv,                 unit: "rad/s",  def: "curvature_1pm × speed_mps"}
+      - {name: speed_mps,          unit: "m/s",    def: "speed_mps"}
+      - {name: L,                  unit: "0~1",    def: "trailer_cm / max_trailer_cm"}
+      - {name: kv_L,               unit: "rad/s",  def: "kv × L"}
+      - {name: offset_L,           unit: "10cm",   def: "offset_10cm × L"}
+      - {name: heading_L,          unit: rad,      def: "heading_err_rad × L"}
+    # 특징 정의 검사용 시험 입력과 기대값(손으로 계산). 코드의 features() 결과와 같아야 한다.
+    probe:
+      input: {offset_cm: 10.0, heading_err_rad: 0.1, curvature_1pm: 2.0, speed_mps: 0.25, trailer_cm: 15.0}
+      expected: [1.0, 0.1, 0.5, 0.25, 1.0, 0.5, 1.0, 0.1]
+
+# 잔차 모델을 실제로 적용하는 조건 (하나라도 어기면 M0 기준선만 사용 = Δω 0)
+apply_policy:
+  untrained_length: baseline_only   # 학습하지 않은 트레일러 길이(예: 15cm)에서는 잔차를 끈다(외삽 금지)
+  model_missing: baseline_only
+  feature_version_mismatch: refuse  # 모델 파일의 특징 버전이 다르면 로드 거부(현재 코드 동작)
+  low_lane_confidence: stop         # 차선 신뢰도가 낮으면 모델이 아니라 제어기가 정지(lane_follow min_conf)
+
+# 모델 채택(배포 후보) 기준 — 초안. 오프라인 MAE 는 폐루프 주행 성능이 아니므로
+# 채택 후에도 하네스 케이스(T00/T10)의 PASS 로 최종 확인한다.
+adoption_gate:
+  min_improvement_ratio: 0.10      # 검증 MAE 가 기준선 대비 10% 이상 줄어야 함 (임의 초안값)
+  per_length_no_worse: true        # 길이별 검증 MAE 도 기준선보다 나빠지면 안 됨
+  min_val_episodes_per_length: 3   # 길이별 검증 에피소드가 이보다 적으면 판정불가(UNJUDGED)
+  allow_synthetic: false           # 합성 데이터로 학습한 모델은 채택하지 않는다

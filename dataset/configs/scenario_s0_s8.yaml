@@ -1,0 +1,71 @@
+# 시연 시나리오 S0~S8 정의 (harness_runner가 읽음).
+# 출처: 프로젝트 "전체 흐름" + 지도 configs/arena.yaml. 트랙 번호(2026-11-18 확정): 0=트랙 밖(주차장/주유구역), 1=안쪽 차선, 2=바깥 차선.
+#   3번 트랙은 지도에서 사라졌다. 주유구역은 2번 트랙 왼쪽 바깥(트랙 0)에 있다.
+#   주차장은 1번 트랙 안쪽에 있다. 시작은 주차된 상태(사용자 확정 2026-11-18): T00 은 P_UP(마커 11), T10 은 P_DN(마커 10)에서 출차 —
+#   T00 은 1번 트랙에, T10 은 1번 트랙을 지나 2번 트랙으로 올라간다(S0 의 track 은 '출차 뒤 올라가는 트랙'). 2D 시뮬레이터(configs/sim2d.yaml)가 이 출차 경로를 만든다.
+#   [추정] 입차(ENTER) 시작 차선은 1번으로 적었다. 2번 트랙에서 오면 1번으로 차선변경이 먼저 필요 — 입차 경로 설계 때 확인.
+# 트레일러 길이(프로파일)는 configs/run_presets.yaml 에서 정한다(12단계). 시연 프리셋 demo 에서는 S4 에서 robot_a 가 0→15 로 교체된다.
+# done_when: 단계 종료 조건 종류 (manual=/harness/step_done 수신, lap=1바퀴, parked=주차 완료, timeout=시간)
+# 값(단위/시간)은 현장 측정 후 조정 필요: TODO(측정)
+# ---------------------------------------------------------------------------
+# [12단계 변경] 로봇별 프로파일(트레일러 길이)과 전환은 이 파일에 적지 않는다 → configs/run_presets.yaml
+#   (profile_sets = 시작 조합, events = 끼워넣는 전환(예: a_swap_t15 = S4 에서 robot_a T00→T15), presets = 조합+이벤트 묶음).
+#   단계별 트레일러 길이는 data_tools/run_presets.py 가 '시작 조합 + 그 단계까지의 이벤트'로 계산한다.
+#   예전 이 파일의 trailer_cm / profile_switches 는 프리셋 demo(set2 + a_swap_t15)와 같은 결과다(테스트로 고정).
+#   이 파일에는 단계별 트랙/모드/간격만 남긴다.
+# ---------------------------------------------------------------------------
+scenario:
+  - id: S0
+    description: "주차구역에서 시작(출차 준비)"
+    robots:
+      robot_a: {track: 1, mode: EXIT}
+      robot_b: {track: 2, mode: EXIT}
+    done_when: {type: manual, timeout_s: 60}
+  - id: S1
+    description: "1바퀴 돌기(직진): A=1번 트랙, B=2번 트랙"
+    robots:
+      robot_a: {track: 1, mode: DRIVE}
+      robot_b: {track: 2, mode: DRIVE}
+    done_when: {type: lap, timeout_s: 120}
+  - id: S2
+    description: "2번 트랙 1바퀴, 앞뒤 간격 조절"
+    robots:
+      robot_a: {track: 2, mode: DRIVE, keep_gap_cm: 40}
+      robot_b: {track: 2, mode: DRIVE, keep_gap_cm: 40}
+    done_when: {type: lap, timeout_s: 120}
+  - id: S3
+    description: "차선변경 후 주유소 순차 진입"
+    robots:
+      robot_a: {track: 2, mode: LANE_CHANGE}   # 2번 트랙에서 왼쪽 바깥(주유구역 쪽)으로
+      robot_b: {track: 2, mode: LANE_CHANGE}
+    done_when: {type: manual, timeout_s: 180}
+  - id: S4
+    description: "A 주유 종료 후 트레일러 교체 (A: 0→15cm)"
+    robots:
+      robot_a: {track: 0, mode: FUELING}      # 주유구역은 트랙 밖
+      robot_b: {track: 0, mode: GATE_WAIT}    # 파란 선(대기선)
+    done_when: {type: manual, timeout_s: 180}
+  - id: S5
+    description: "B 주유 후 제자리 주차"
+    robots:
+      robot_a: {track: 2, mode: DRIVE}
+      robot_b: {track: 1, mode: ENTER}        # 추정: 주차장은 1번 트랙 안쪽
+    done_when: {type: parked, timeout_s: 120}
+  - id: S6
+    description: "A 2번 트랙 1바퀴 (트레일러 15cm)"
+    robots:
+      robot_a: {track: 2, mode: DRIVE}
+      robot_b: {track: 2, mode: IDLE}
+    done_when: {type: lap, timeout_s: 120}
+  - id: S7
+    description: "A 직선코스 주차장 주차 (15cm 크기 칸)"
+    robots:
+      robot_a: {track: 1, mode: ENTER}        # 추정: 주차장은 1번 트랙 안쪽
+      robot_b: {track: 2, mode: IDLE}
+    done_when: {type: parked, timeout_s: 120}
+  - id: S8
+    description: "주차구역에서 종료 (A=15cm, B=10cm)"
+    robots:
+      robot_a: {track: 0, mode: PARKED}
+      robot_b: {track: 0, mode: PARKED}
+    done_when: {type: manual, timeout_s: 30}

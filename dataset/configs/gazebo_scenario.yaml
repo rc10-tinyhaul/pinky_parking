@@ -1,0 +1,64 @@
+# =============================================================================
+# gazebo_scenario.yaml — 시연 시나리오 [1]~[8] 설정 (2026-11-20, 사용자 승인 17:57). 판정 기준(gate)은 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/demo_scenario.sh → data_tools/gazebo_scenario_eval.py
+#   시연 순서(사용자 제시): [1] a,b 동시 출차(a: P_UP→1번, b: P_DN→2번)  [2] a,b 일반주행(직선→곡선→직선→곡선, 연속)
+#     [3] a 1번→2번 차선변경(목표 차선이 막혀 있으면 정지(hold) 후 재요청, 앞에 차가 있으면 간격 조절로 감속·서행)
+#     [4] a,b 2번 트랙 앞뒤 간격 조절  [5] b 2번→1번 차선변경  [6] b 1번→P_DN 입차  [7] a 2번→1번 차선변경  [8] a 1번→P_UP 입차
+#   ⚠ 정직성 기록(시험 전):
+#     - 이 흐름 전체는 가제보에서 한 번도 돌려 본 적이 없다. 두 대 동시 출차, 두 대 동시 일반주행, 1번→2번(오른쪽) 차선변경은 처음 시도한다.
+#     - 구간 사이 인계(출차→차선 추종, 차선 추종→입차)는 '멈췄다 인계'이고 인계 자세는 가제보 실제 위치다(시뮬레이션 한정, 실제 로봇은 SLAM/AMCL 필요).
+#     - '앞에 물체가 있으면 돌아서 주행'은 구현돼 있지 않다. 여기서는 (a) 목표 차선이 막혀 있으면 노드의 CHECK/HOLD 가 정지시키고 지휘기가 재요청,
+#       (b) 목표 차선 안 앞차는 간격 조절이 감속·서행으로 처리한다. 스스로 우회하는 동작은 없다.
+#     - 아래 수치 중 [가정] 표시는 근거 없는 첫 값이다. 결과를 보고 바꾸면 사후 변경으로 기록한다(이전 FAIL 과 섞어 읽지 말 것).
+#   각 구간 판정은 단독 시험 기준을 그대로 쓴다: 출차 = gazebo_park.yaml gate.exit, 입차 = gate.enter, 차선변경 = gazebo_lane_change.yaml gate(바퀴 기준).
+#   단위: m, m/s, cm, s(시간은 시뮬레이션 시간).
+# =============================================================================
+version: 1
+robots:                                 # 키 a, b = 시연 로봇. exit/enter = gazebo_park.yaml 의 시나리오 이름
+  a: {robot: robot_a, profile: T00, exit: exit_T00, enter: enter_T00, enter_shortcut: enter_shortcut_T00}
+  b: {robot: robot_b, profile: T10, exit: exit_T10, enter: enter_T10, enter_shortcut: enter_shortcut_T10}
+run:
+  perception: configs/perception_gazebo.yaml
+  start_wait_s: 3.0                     # 생성 뒤 안정 대기(시뮬레이션 s)
+  node_start_timeout_s: 30.0            # 노드의 set_parameters 서비스가 뜨기를 기다리는 시간(실제 s)
+  keep_gap_cm: 10.0                     # 간격 조절 목표(간격 시험과 같음). 차선 추종 묶음은 이 값으로 띄우고, 구간에 따라 0 ↔ 이 값으로 바꾼다
+  footprint: {length_m: 0.14, width_m: 0.13, wheel_separation_m: 0.0961, wheel_width_m: 0.02}
+coords_export:                          # [2026-11-20 승인] shortcut 실행에서만: 가제보 실제 좌표를 단계 이름표와 함께 robot_a / robot_b 따로 .csv + .npz 로 저장
+  min_dt_s: 0.01                        # [가정] 같은 로봇의 저장 간격 하한(시뮬레이션 s). 0.01 = 최대 100Hz(가제보 위치 메시지가 이보다 촘촘하면 건너뜀)
+gate:                                   # [결과 전 고정 — 바꾸려면 다시 승인]
+  handoff: {stop_wait_s: 4.0, stop_speed_mps: 0.01}      # gazebo_chain.yaml 과 같은 값
+  min_clearance_cm: 2.0                 # 모든 구간: 두 몸체 최소 이격 ≥ 2cm(간격 시험 D 와 같은 기준, 맞닿음 = 0)
+  s1_exit:
+    b_start_delay_s: 0.0                # b 출차를 늦추는 시간. [가정] 0 = 동시 출발. 부딪히면 값을 올리고 사후 변경으로 기록
+    timeout_s: 120.0
+  s2_drive:
+    laps: 1.0                           # 각자 이만큼(스타디움 위상 기준 바퀴 수) 달려야 함. [가정] 1바퀴 = 직선→곡선→직선→곡선
+    settle_after_m: 0.5                 # 정지 상태에서 시작하므로 이만큼 달린 뒤부터 offset 을 본다(연결 시험 exit_drive 와 같은 값)
+    mean_abs_off_cm_max: 2.0            # gazebo_drive 기준과 같음
+    max_abs_off_cm_max: 6.0             # [가정] 곡선 최대 허용(M0 반복 시험 최대 중앙 1.7cm 보다 넉넉히)
+    stop_speed_mps: 0.02
+    stop_s_max: 1.0                     # 의도 없이 이 시간 넘게 서면 FAIL
+    timeout_s: 200.0
+  s3_lc_a: {direction: -1, from_track: 1, to_track: 2, hold_retry_s: 2.0, hold_max_s: 40.0, trigger_timeout_s: 120.0, timeout_s: 200.0}   # direction -1 = 오른쪽(바깥쪽). 가제보 첫 시도
+  s4_gap:
+    duration_s: 40.0                    # [가정] 이 시간 동안 간격 조절 주행
+    lead_speed_scale: 0.6               # 앞에 있는 로봇을 느리게 해서 뒤차가 따라붙게 한다(간격 시험 A 와 같은 60%)
+    engaged_center_dist_m_max: 0.45     # [가정] 중심 거리가 한 번이라도 이 값 이하가 되어야 간격 조절이 실제로 걸린 것으로 본다
+  s5_lc_b: {direction: 1, from_track: 2, to_track: 1, hold_retry_s: 2.0, hold_max_s: 40.0, trigger_timeout_s: 120.0, timeout_s: 250.0}  # 2→1 은 단독 20/20(T10)
+  s7_lc_a: {direction: 1, from_track: 2, to_track: 1, hold_retry_s: 2.0, hold_max_s: 40.0, trigger_timeout_s: 120.0, timeout_s: 250.0}
+  enter: {timeout_s: 120.0}             # s6(b), s8(a) 입차 구간 한도. 판정은 gazebo_park.yaml gate.enter
+  resume:                               # --from N(N>1) 이어 시작: 로봇이 필요한 차선 위에 있는지 검사하는 허용 오차
+    lane_tol_cm: 3.0                    # [가정] 차선 중심에서 이 값 이내(차선 반폭 안쪽). 결과를 보고 바꾸면 사후 변경으로 기록
+  shortcut:                             # [2026-11-20 19:4x 승인, 판정 기준은 결과 전 고정] --from 5 --upto 8 shortcut: a,b 동시에 2번 트랙에서 바로 입차(차선변경+입차 한 경로)
+    timeout_s: 240.0                    # [가정] 시작부터 두 대가 모두 끝날 때까지 한도(시뮬레이션 s). 입차 인계 구간까지 달리는 시간 포함
+    # 판정 = 각자 입차 판정(gazebo_park.yaml gate.enter) + 두 몸체 이격 ≥ min_clearance_cm. 2→1 차선변경은 입차 경로에 포함돼 별도 판정 없음([5][7] 은 [6][8] 과 같이 표시)
+  fast_transition:                      # [2026-11-20 21:45 승인, 가제보 미검증] shortcut 실행의 단계 전환 공백 줄이기. false 면 이전 방식(E0500: 노드를 인계 때 새로 띄움)과 같다
+    enable: true                        # true = ① [1] 에서 로봇별 출차 완료 즉시 차선 추종 노드 시작 ② park_node 는 enable=false 로 미리 띄우고 인계 때 start_pose+enable ③ 차선 추종 노드는 passive_when_disabled 로 켜 둔 채 침묵, 종료는 기다리지 않음
+    # 정지 확인(handoff.stop_wait_s / stop_speed_mps)은 그대로 — 안전 확인은 줄이지 않는다
+  lc_trigger:                           # [2026-11-20 19:1x 승인, 가제보 미검증] 차선변경 요청 시점. 이전 = straight_start(직선1 시작을 지날 때만 → 최대 한 바퀴 대기)
+    mode: immediate                     # immediate = 직선 앞부분이면 바로 요청 / straight_start = 이전 방식
+    straights: [1, 2]                   # 1 = 오른쪽 직선(위상 0~), 2 = 왼쪽 직선. 왼쪽 직선은 아직 한 번도 시험 안 함 [가정]
+    max_in_straight_m: 0.30             # [가정] 직선 시작에서 이 값 이내일 때만 요청(직선 0.6 m, 변경 길이 0.75 m 라 남은 직선이 변경 길이보다 길 수 없음). 결과를 보고 바꾸면 사후 변경으로 기록
+  s_drive_to_window: {timeout_s: 120.0}  # --from 6/8: 입차 인계 구간까지 차선 추종으로 가는 한도
+  lc_enter_extra_m: 0.02                # chain: 차선변경 판정에 필요한 주행을 이만큼 넘긴 뒤 인계
+  lc_enter_window_margin_m: 0.25        # chain: 입차 경로 곡선 시작 이만큼 전까지만 인계 허용

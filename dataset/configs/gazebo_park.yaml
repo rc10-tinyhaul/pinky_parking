@@ -1,0 +1,48 @@
+# =============================================================================
+# gazebo_park.yaml — 가제보 입차·출차 시험 설정 (20단계 블록 3, 2026-11-20). 판정 기준(gate)은 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/gazebo_park.sh → data_tools/gazebo_park_eval.py (경로 생성·평가) → planning_control/park_node.py (경로 추종)
+#   경로 기하(곡률 한계, 합류 길이, 칸·방향·목표 차선)는 configs/sim2d.yaml 의 exit/enter 와 configs/arena.yaml 이 기준이다(SIM2D 와 같은 경로).
+#   여기에는 가제보 시험에서만 쓰는 값(속도, 시간 한도, 판정 기준)을 둔다. 단위 m, cm, deg, s. 가제보 결과는 실제 로봇 성능이 아니다.
+#
+# 판정 해석(결과 보기 전에 고정):
+#   입차(enter): 경로 종점(정지 목표)에서 park/state 가 done 이 된 뒤 stop_hold_s 동안 기다린 다음의 가제보 실제 자세로 본다.
+#     ① 정지 위치 오차 = 실제 위치와 목표 점(칸 안 몸체 중점이 칸 가운데가 되는 로봇 중심) 거리 ≤ stop_err_cm_max
+#     ② 헤딩 오차 = 실제 yaw 와 목표 yaw 차이 ≤ heading_err_deg_max
+#     ③ 가상 몸체(로봇 몸체 + 가상 트레일러: 앞끝 +0.07, 뒤끝 −(0.07+트레일러 길이), 폭 0.13)의 네 모서리가 칸(arena.yaml slots) 안 — 튀어나온 양 ≤ protrusion_mm_max
+#        (가제보 로봇에는 트레일러가 없어 '가상'이다. 실제 트레일러 검증이 아님)
+#     ④ 정지: done 뒤 마지막 1초 이동 속도 < stop_speed_mps_max.   ⑤ 시간 한도 안에 done.
+#   출차(exit): ① 완주(done, 시간 한도 안) ② 합류 정착 구간(곡선 끝 + (목표가 2번이면 0.10+변경 길이) + settle_after_m)부터 끝까지
+#     실제 위치의 계획 경로 대비 횡오차 최대 ≤ cross_track_cm_max ③ 끝 샘플들의 목표 차선 중심 대비 |offset| 평균 ≤ lane_offset_final_cm_max.
+#     (출차는 주차칸 선·가운데 선을 넘는 것이 정상이라 선 침범 판정은 하지 않는다.)
+#   사례(반복 n 회): n 회 모두 PASS = 안정 통과, 1~n−1 = 불안정, 0 = 실패 (다른 가제보 시험과 같은 규칙).
+# =============================================================================
+version: 1
+gate:                                   # [결과 전 고정 — 바꾸려면 다시 승인]
+  enter:
+    stop_err_cm_max: 2.0                # sim2d.yaml enter.success_stop_error_cm 과 같은 값
+    heading_err_deg_max: 5.0
+    protrusion_mm_max: 0.0              # 가상 몸체가 칸 밖으로 나간 양
+    stop_speed_mps_max: 0.02
+    stop_hold_s: 1.5                    # done 뒤 이만큼(시뮬레이션 s) 기다렸다 최종 자세를 읽는다
+  exit:
+    settle_after_m: 0.30
+    cross_track_cm_max: 3.0
+    lane_offset_final_cm_max: 3.0
+run:                                    # [가정] 속도·주시거리는 SIM2D slow 단계에 가까운 값으로 시작. 가제보 결과를 보고 바꾸면 사후 변경으로 기록
+  # [2026-11-20 14:06 사후 조정 — 판정 기준 아님] exit_T00 ×5 가 정착 뒤 횡오차 3.9cm 로 5/5 FAIL(주시거리 25cm, trailer.yaml 값) → 사용자 승인으로 15cm 로 변경.
+  #   원래 값: lookahead_from: trailer_yaml (T00 25cm / T10 30cm). 결과 보고 바꾼 값이므로 이 설정으로 얻은 PASS 와 이전 FAIL 을 섞어 읽지 말 것.
+  exit:  {speed_mps: 0.10, lookahead_cm: 15.0}
+  enter: {speed_mps: 0.08, lookahead_cm: 10.0, decel_mps2: 0.3}     # lookahead 10 = sim2d.yaml enter.lookahead_cm
+  timeout_s: 90.0                       # 시뮬레이션 시간 한도(출발 포함)
+  start_wait_s: 2.0                     # 생성 뒤 odom 이 안정되길 기다리는 시간(시뮬레이션 s)
+  footprint: {robot_length_m: 0.14, robot_width_m: 0.13}    # arena.yaml robot.size_mm. [가정] 기준점 = 몸체 중심
+scenarios:                              # 로봇·프로파일은 gazebo_robots.yaml 과 sim2d.yaml(exit/enter.profiles)의 칸·방향이 맞는 조합만
+  exit_T00:  {mode: exit,  robot: robot_a, profile: T00}
+  exit_T10:  {mode: exit,  robot: robot_b, profile: T10}
+  enter_T00: {mode: enter, robot: robot_a, profile: T00}
+  enter_T10: {mode: enter, robot: robot_b, profile: T10}
+  # [2026-11-20 19:4x shortcut, 가제보 미검증] 2번 트랙에서 1번 트랙을 가로질러 바로 칸으로 들어가는 입차(차선변경+입차 한 경로). 작업공간 계산: 곡률 최대 T00 4.5 / T10 4.3 (한계 8)
+  enter_shortcut_T00: {mode: enter, robot: robot_a, profile: T00, start_lane: 2, prefix_m: 1.0}
+  enter_shortcut_T10: {mode: enter, robot: robot_b, profile: T10, start_lane: 2, prefix_m: 1.0}
+repeat:
+  n: 5

@@ -1,0 +1,4 @@
+[INFO] [1795180062.750847527] [bt10.park_node]: 경로 로드: /home/khe/av_track/av_track/logs/gazebo_scenario/R20261120_215903_7933_demo_scenario/b_shortcut_path_nominal.json (모드 enter, 점 1150개, 정지 번호 1109)
+[INFO] [1795180131.352977684] [bt10.park_node]: 시작 자세를 파라미터 start_pose 로 덮어씀: x -0.490 y 0.643 yaw -2.163
+[INFO] [1795180131.366820275] [bt10.park_node]: 주행 시작: 모드 enter, v 0.08 m/s, 주시거리 10.0 cm, 경로 길이 2.30 m
+[INFO] [1795180229.209319011] [bt10.park_node]: 경로 완료: 남은 거리 0.2 cm, 주행(odom) 2.20 m

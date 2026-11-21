@@ -1,0 +1,67 @@
+# =============================================================================
+# dataset_plan.yaml — 2026-11-18 학습 데이터셋 설계 (T00/T10, 주유소 제외)
+# 읽는 곳: data_tools/collection_plan.py(수집 체크리스트/진행률), data_tools/validate_dataset.py(품질 검사)
+#
+# 데이터셋 종류 (설계 문서 D1/D2/D6 중 오늘 범위)
+#   D1+D2 차선·조향 : 1번/2번 트랙 직선·곡선 구간 주행. 입력 = 차선 특징, 정답 = 사람 조종 각속도(omega_demo).
+#                    트레일러 길이(trailer_cm)가 입력 특징이므로 D1 과 D2 는 같은 에피소드 파일을 쓴다.
+#   D6    주차      : 입차/출차. 오늘은 '시도 기록(bag + 메타)'만 수집 대상. 학습 대상 아님(알고리즘 설계는 [4][5]).
+#   제외           : D3 게이트 인식, D4 주유구역 점유(주유소 오늘 제외), D5 라이다 맵(알고리즘 미정).
+#
+# 에피소드 = 한 번의 연속 주행(rosbag 1개). 모든 에피소드에 아래 메타를 반드시 남긴다(record_bag.sh 가 meta.json 저장).
+# 값(조명/속도/회차)은 현장 사정에 맞게 조정하는 '초안' → TODO(현장 확인)
+# =============================================================================
+meta:
+  version: 1
+  date: "2026-11-18"
+
+# 프로파일(T00/T10 ↔ 로봇/트레일러)과 케이스 목록의 기준은 하네스 설정 파일 하나로 통일한다.
+testcase_file: configs/testcases_T00_T10.yaml
+
+# 구간(=하네스 템플릿 이름) → (zone, action). record_bag.sh 의 --zone/--action 값과 대응.
+segments:
+  P_EXIT:      {zone: parking, action: exit,     track: 0}
+  P_ENTER:     {zone: parking, action: enter,    track: 0}
+  T1_STRAIGHT: {zone: track1,  action: straight, track: 1}
+  T1_CURVE:    {zone: track1,  action: curve,    track: 1}
+  T2_STRAIGHT: {zone: track2,  action: straight, track: 2}
+  T2_CURVE:    {zone: track2,  action: curve,    track: 2}
+
+# 수집 조건. 각 값은 meta.json 에 그대로 기록된다.
+conditions:
+  lighting: [bright, dim]          # bright=평소 조명, dim=조명 일부 소등/측면 광 (TODO 현장에서 정의)
+  speed_level: [slow, normal]      # 속도 수준. 실제 m/s 는 아래 speed_mps(가정값, 실측 필요)
+  speed_mps: {slow: 0.15, normal: 0.23}   # normal 0.25 → 0.23 (2026-11-18): 1번 트랙 곡선(R405)에서 바퀴 속도 한계 여유(configs/arena.yaml)
+
+# 수집 목표 개수 (프로파일 1개당). 합계 = 차선 48 + 복귀 8 + 주차 20 = 76, 두 프로파일 152.
+targets:
+  lane:
+    segments: [T1_STRAIGHT, T1_CURVE, T2_STRAIGHT, T2_CURVE]
+    per_combo: 3                   # (구간 × 조명 × 속도) 조합마다 정상 주행 3회
+  recovery:
+    segments: [T1_STRAIGHT, T1_CURVE, T2_STRAIGHT, T2_CURVE]
+    per_segment: 2                 # 일부러 선을 벗어났다 복귀하는 주행(구간마다 2회). 조명 bright / 속도 slow 로 수집
+  parking:
+    segments: [P_EXIT, P_ENTER]
+    per_segment: 10                # 입차/출차 각 10회 시도(성공/실패 모두 기록)
+
+# 품질 기준 (validate_dataset.py). error = 학습에 쓰면 안 됨, warn = 확인 필요.
+quality:
+  allowed_trailer_cm: [0, 10, 15]  # 15cm 는 오늘 수집 대상은 아니지만 형식상 허용
+  allowed_track: [0, 1, 2]         # 0=트랙 밖(주차장/주유구역), 1=안쪽 차선, 2=바깥 차선. 3번 트랙은 지도에서 사라짐(2026-11-18)
+  min_len_error: 20                # 프레임 수가 이보다 적으면 error
+  min_len_warn: 100                # 이보다 적으면 warn (10Hz 기준 10초 미만)
+  range:                           # 절댓값 범위 [min, max] (벗어나면 error)
+    offset_cm: [-30.0, 30.0]
+    heading_err_rad: [-1.6, 1.6]
+    curvature_1pm: [-10.0, 10.0]
+    speed_mps: [0.0, 0.6]
+    omega_demo: [-3.0, 3.0]
+  constant_std_eps: 1.0e-9         # 표준편차가 이보다 작으면 '값이 변하지 않음' warn
+
+# 분할 규칙 (설계 문서 2-4): 프레임 랜덤 분할 금지, 에피소드 단위 + 트레일러 길이별 층화.
+split:
+  val_ratio: 0.2
+  test_ratio: 0.1
+  seed: 42
+  holdout_track: null              # 예: 2 로 두면 2번 트랙 전체를 test 로(트랙 일반화 평가)

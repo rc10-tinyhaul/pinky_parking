@@ -1,0 +1,26 @@
+# 트레일러 길이별 제어 파라미터. 값은 '초기 가설'이며 실주행 데이터로 보정해야 한다. (TODO 보정)
+# lookahead_cm : Pure Pursuit 전방주시거리. 트레일러가 길수록 오프트래킹이 커서 길게 둔다(가설).
+# max_speed_mps: 트레일러가 길수록 낮춘다(가설). 단 1번 트랙 곡선(R405)에서 보정 각속도 0.5 rad/s 를 더해도 바퀴 속도가 한계를 넘지 않으려면
+#                약 0.231 m/s 이하여야 한다(configs/arena.yaml, ./scripts/check_arena.sh 가 검사). 그래서 T00/T10 을 0.25 → 0.23 으로 낮췄다(2026-11-18).
+# lane_change_len_cm: 차선변경에 사용하는 종방향 거리(가설).
+#   [2026-11-20 작업 1 v11] T00 60 → 75cm: 가제보 시험에서 목표 도달 시 헤딩(0.35~0.47rad)이 몸체 모서리 침범 임계(≈0.28rad)를 넘어 경로를 완만하게 함.
+#   직선 60cm 를 15cm 넘어 호 구간과 겹친다(미검증). T10 은 이미 75 라 T00 = T10(길이가 트레일러에 따라 단조 증가는 유지, 같음 허용).
+# robot_limits : 핑키프로 로봇 한계. 출처 = 공식 패키지 소스(bringup.py, launch) [소스확인].
+#   max_rpm 100 이면 직선 최대속도 = 100 × 2π × 바퀴반지름 / 60 ≈ 0.283 m/s.
+#   곡선에서는 바깥 바퀴가 한계를 넘으면 두 바퀴를 같은 비율로 줄여서 v 와 ω 가 함께 작아진다.
+#   → params 의 max_speed_mps 는 이 한계보다 작아야 하고(tests/test_robot_limits.py 가 검사), 곡선 여유를 남긴다.
+#   wheel_separation_m 은 launch 0.0961 / URDF 0.0811 두 값이 있어 실측 전까지 확정이 아니다(미확인).
+allowed_lengths_cm: [0, 10, 15]
+robot_limits:
+  max_rpm: 100
+  wheel_radius_m: 0.027
+  wheel_separation_m: 0.0961       # 미확인: URDF 는 0.0811 → 자로 재서 확정(TODO 현장 확인)
+  max_linear_mps: 0.283            # 위 식으로 계산한 값(테스트가 식과 맞는지 확인)
+  speed_margin_ratio: 0.9          # max_speed_mps 는 max_linear_mps × 0.9 이하로 둔다(곡선 여유, 초안)
+robots:
+  robot_a: {initial_trailer_cm: 0}
+  robot_b: {initial_trailer_cm: 10}
+params:
+  0:  {lookahead_cm: 25, max_speed_mps: 0.23, lane_change_len_cm: 75}   # 0.30 → 0.25 → 0.23: 로봇 한계(0.283) 초과 + 곡선 여유 확보(2026-11-18)
+  10: {lookahead_cm: 30, max_speed_mps: 0.23, lane_change_len_cm: 75}   # 0.25 → 0.23: 1번 트랙 곡선 여유(2026-11-18)
+  15: {lookahead_cm: 33, max_speed_mps: 0.22, lane_change_len_cm: 85}

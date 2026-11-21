@@ -1,0 +1,12 @@
+# 인식 파라미터(카메라·조명에 따라 반드시 보정). TODO(측정): px_per_cm, HSV 범위
+lane:
+  hsv_low:  [0, 0, 180]     # 가정: 밝은(흰색 계열) 선. 실제 트랙 선 색에 맞게 수정
+  hsv_high: [180, 60, 255]
+  roi_top_ratio: 0.5        # 이미지 상단 절반은 무시 (하단 절반만 사용)
+  n_rows: 8                 # 선 중심을 추정할 행 개수
+  min_pixels_per_row: 15
+  px_per_cm: 6.0            # 이미지 하단 부근 1cm당 픽셀 수 (카메라 보정 후 갱신)
+gate_signal:
+  roi_px: [0, 0, 160, 120]  # 라이트가 보일 것으로 예상되는 영역 (가정값)
+  min_ratio: 0.02           # ROI 중 색 픽셀 비율 이 이상이어야 라이트 켜짐으로 판단
+  debounce_frames: 3

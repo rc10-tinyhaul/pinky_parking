@@ -1,0 +1,95 @@
+# =============================================================================
+# gazebo_gap.yaml — 가제보 앞뒤 간격 조절 시험 설정 (18단계). 판정 기준(gate)은 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/gazebo_gap.sh → data_tools/gazebo_gap_eval.py (시험), perception/front_gap_node.py (front_gap 섹션)
+#   출처: 판정 기준 = 사용자 결정 2026-11-18 + SIM2D 5단계 기준과 같음 (docs/daily/2026-11-19_plan.md "18단계 계획").
+#   시험: 2번 트랙 같은 차선에 앞차 robot_a T00, 뒤차 robot_b T10(간격 조절 켬, 목표 10cm). 시작 간격 start_gap_cm.
+#   '실제 간격' = 가제보 실제 위치(dynamic_pose)로 잰, 차선을 따라 앞차 뒤 범퍼 ~ 뒤차 앞 범퍼 거리. 시간은 시뮬레이션 시간.
+#   단위: m, m/s, cm, s. 가제보 결과는 실제 로봇 성능이 아니다(뒤차 T10 에 트레일러 모델 없음, 가제보 물리/라이다는 가정).
+# =============================================================================
+# 변경 이력
+#   version 2 (2026-11-20, 5-1 — 사용자 승인 03:07): 시나리오 D_lane_change 추가(뒤차가 앞차를 간격 조절로 따라가다 2→1번 트랙 차선변경). A~C 기준·수치는 그대로.
+#     D 판정(결과 전 고정): ① 뒤차 차선변경 기준 = configs/gazebo_lane_change.yaml gate(version 2, 바퀴 접지 기준) 그대로 ② 차선변경 요청 ~ (변경 길이+2m)
+#     구간 두 몸체 직사각형(0.14×0.13) 최소 이격 ≥ 2cm(겹침·맞닿음 = 0) ③ 같은 구간에서 뒤차 속도 <0.02 m/s 가 1초 이상 이어지지 않음. 5회 반복.
+#     시작 간격 25cm 는 40cm 에서 바꾼 값(뒤차가 직선 시작까지 약 0.3m 달리는 동안 앞차도 멀어져 요청 때 간격이 너무 커지는 것을 줄이려고) — 요청 때 간격이
+#     35cm 를 넘으면 경고만 하고(판정 영향 없음) 값은 사례 JSON 에 기록. 가제보 한정(뒤차 트레일러 모델 없음), 제어 로직은 고치지 않고 현재 동작을 관찰.
+#   (2026-11-20 10:12경, 사용자 승인 10:11) camera 섹션 추가 — D 시험의 뒤차 카메라·인식 기록(--save-camera, 관찰용). version·gate·scenarios·run 값은 그대로(version 2 유지).
+#   (2026-11-20 11:5x, 사용자 승인 11:42 "승인" — 2단계 구현) CHECK/HOLD: front_gap 섹션에 옆 차선 점유 구역 occ_* 추가, gate/scenarios 에 D2_lane_blocked 추가
+#     (목표 차선 1번에 정지한 앞차, 뒤차는 차선변경을 시작하지 않고 멈춰야 함). 기준은 docs/LANE_CHANGE_DECISION.md 7절에서 결과 전에 고정한 값 그대로.
+#     [해석 명시 — 시험 전] 7-2 의 "횡 위치 ±3cm(바퀴 접촉 기준)" 는 선을 넘지 않는 시험이라 '자기 차선 중심 대비 몸체 중심 횡 오프셋 |off_own| ≤ 3cm' 로 구현했다(바퀴 접촉 개수는 쓰지 않음).
+#     A~C·D 기준·수치(version 2)는 그대로.
+version: 2
+camera:                                 # [관찰용, 판정·제어 무관] gazebo_gap.sh --save-camera 일 때만 사용
+  topic: camera/image_raw/compressed    #   뒤차 네임스페이스 아래 압축 영상(인식 노드가 보는 것과 같은 토픽)
+  before_s: 1.0                         #   차선변경 요청 이 시간 전부터 저장 [s, 시뮬레이션]
+  after_s: 20.0                         #   요청 뒤 이 시간까지 저장 [s]
+  min_interval_s: 0.1                   #   프레임 최소 간격 [s](최대 10장/초, 용량 제한 — 회차당 수백 장 가정, 크기 미확인)
+front_gap:                              # front_gap_node 설정(perception/front_gap.py 기본값과 같음 — 바꾸면 노드 로그에 나온다)
+  mount_x: -0.017                       # 라이다 장착 위치(로봇 중심 기준) [m] — 핑키프로 URDF
+  mount_y: 0.0
+  mount_yaw: 3.14159265                 # π: 라이다가 뒤를 향함 → 점을 π 돌려서 로봇 좌표로
+  half_width_m: 0.06                    # 앞 통로 반폭 [m]. [2026-11-19 19:50 0.10→0.06] 0.10 은 내 차선 선(중심에서 약 0.09m)을 앞차로 잡았다(I-043). 0.06 = 선보다 안쪽 + 앞차 몸체 중앙은 잡힘
+  front_bumper_m: 0.07                  # 로봇 중심 → 앞 범퍼 [m]
+  max_range_m: 1.0                      # 이 거리 밖은 앞차로 보지 않음
+  # [CHECK/HOLD, 2026-11-20] 옆 차선 점유 구역(docs/LANE_CHANGE_DECISION.md 7-1, 결과 전 고정 — perception/front_gap.py OCC_* 와 같아야 함, 테스트가 확인)
+  occ_lane_pitch_m: 0.19                #   옆 차선 중심까지의 횡 거리(arena lane_pitch)
+  occ_half_width_m: 0.06                #   구역 반폭 → 로봇 중심에서 옆으로 0.13~0.25 m
+  occ_x_min_m: -0.25                    #   로봇 중심 기준 뒤쪽 한계 [m]
+  occ_x_max_m: 1.0                      #   앞쪽 한계 [m] (= 변경 길이 0.75 + 0.25)
+  occ_min_points: 3                     #   구역 안 점이 이 개수 이상이면 점유(가정값)
+gate:                                   # [결과 전 고정 — 바꾸려면 다시 승인]
+  A_cruise:                             # 앞차가 일반 속도의 60% 로 20초 순항
+    min_gap_cm_min: 15.0                #   뒤차 최소 실제 간격 ≥ 15cm
+    collision_allowed: false
+  B_slow_stop:                          # 앞차가 0.3 m/s² 로 감속해 정지
+    stop_gap_cm: 10.0                   #   정지 간격 10 ± 2cm
+    stop_gap_tol_cm: 2.0
+    collision_allowed: false
+  C_hard_stop:                          # 앞차 즉시 정지(enable false + 정지 명령)
+    min_gap_cm_min: 2.0                 #   충돌 없음 + 최소 실제 간격 ≥ 2cm
+    collision_allowed: false
+  collision_gap_cm: 0.0                 # 실제 간격이 이 값 이하이면 충돌(범퍼 겹침)
+  D_lane_change:                        # [5-1, 결과 전 고정] 앞차를 따라가던 뒤차의 2→1 차선변경. 차선변경 자체 기준은 configs/gazebo_lane_change.yaml gate 를 그대로 쓴다
+    min_clearance_cm_min: 2.0           #   변경 요청 ~ (변경 길이 + clearance_window_after_m) 구간 두 몸체 최소 이격 ≥ 2cm (겹침·맞닿음 = 0 → 실패)
+    clearance_window_after_m: 2.0
+    stop_v_mps: 0.02                    #   뒤차 속도가 이 값 미만으로 stop_s_max 초 이상 이어지면 정지로 보고 실패
+    stop_s_max: 1.0
+    request_gap_warn_cm: 35.0           #   요청 때 실제 간격이 이보다 크면 경고만(판정에는 영향 없음)
+  D2_lane_blocked:                      # [CHECK/HOLD, 결과 전 고정(LANE_CHANGE_DECISION.md 7-2)] 목표 차선에 정지 차량 → 뒤차는 HOLD(변경 시작 안 함, 자기 차선에서 정지)
+    own_offset_max_cm: 3.0              #   요청 뒤 자기 차선 중심 대비 |횡 오프셋| 최대 ≤ 3cm
+    hold_decision_s: 1.0                #   요청 뒤 이 시간 안에 lane_change/state = hold
+    stop_v_mps: 0.02                    #   속도가 이 값 미만으로
+    stop_hold_s: 1.0                    #   이 시간 이상 이어진 구간이 있어야 함
+    min_clearance_cm_min: 2.0           #   요청 뒤 두 몸체 최소 이격 ≥ 2cm
+run:
+  preset: drive_s2                      # configs/run_presets.yaml — A T00 + B T10 (전환 없음)
+  lead: {robot: robot_a, profile: T00}  # 앞차
+  follow: {robot: robot_b, profile: T10}  # 뒤차(간격 조절)
+  track: 2                              # 2번 트랙만(1번 트랙은 I-040 선 식별 붕괴로 제외)
+  start_phase_m: 0.0                    # 뒤차 출발 위상(오른쪽 직선 아래 끝)
+  start_gap_cm: 40.0                    # 시작 실제 간격(범퍼 사이)
+  body_length_m: 0.14                   # 로봇 길이(arena.yaml robot.size_mm). 기준점을 몸체 중심으로 봄 [가정]
+  follow_keep_gap_cm: 10.0              # 뒤차 간격 목표(run_robot.sh 세 번째 인자)
+  start_wait_s: 3.0                     # 생성 뒤 인식 안정 대기(시뮬레이션 s)
+  settle_s: 3.0                         # 두 대 enable 켠 뒤 앞차 시나리오 시작 전 주행 시간(시뮬레이션 s)
+scenarios:
+  A_cruise:    {lead_scale: 0.6, duration_s: 20.0}                    # 앞차 속도 배율 0.6 로 duration_s 동안
+  B_slow_stop: {run_before_s: 5.0, decel_mps2: 0.3, hold_s: 8.0}      # 5초 순항 → 0.3 m/s² 감속 → 정지 후 hold_s 관찰
+  C_hard_stop: {run_before_s: 5.0, hold_s: 8.0}                       # 5초 순항 → 즉시 정지 → hold_s 관찰
+  D_lane_change:                        # [5-1] 앞차 2번 트랙 순항(속도 배율), 뒤차 직선 시작에서 to_track 으로 차선변경
+    lead_scale: 0.6                     #   앞차 속도 배율(0.23×0.6 = 약 0.138 m/s)
+    start_gap_cm: 25.0                  #   시작 실제 간격(범퍼 사이). 뒤차는 직선 시작보다 start_before_straight_m 앞에서 출발
+    start_before_straight_m: 0.30
+    direction: 1                        #   lane_change/request 값(+1 = 왼쪽 = 안쪽, 2→1)
+    to_track: 1
+    timeout_s: 90.0                     #   시뮬레이션 시간 한도(앞차를 따라가면 느려서 차선변경 시험(60s)보다 길게)
+  D2_lane_blocked:                      # [CHECK/HOLD] 앞차(robot_a)를 목표 차선(1번 트랙)에 정지시키고, 뒤차(robot_b, 2번 트랙)가 직선 시작에서 2→1 요청
+    start_before_straight_m: 0.30       #   뒤차 출발 위치(D 와 같음)
+    lead_track: 1                       #   정지 앞차가 놓이는 트랙(목표 차선)
+    lead_phase_m: 0.40                  #   정지 앞차 위치(직선 시작 = 0, 뒤차가 요청할 때 점유 구역 안인 약 +0.40m — 몸체 앞뒤 ±0.07m)
+    direction: 1
+    to_track: 1
+    observe_s: 8.0                      #   요청 뒤 관찰 시간 [s, 시뮬레이션]
+    timeout_s: 60.0
+  stop_window_s: 2.0                    # 정지 간격 = 앞차가 선 뒤 마지막 이 시간의 평균 실제 간격(B)
+repeat:
+  n: 5                                  # 시나리오마다 5회. 5/5 = 안정 통과, 1~4 = 불안정, 0 = 실패

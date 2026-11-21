@@ -1,0 +1,15 @@
+# rosbag 기록 토픽 목록 (scripts/record_bag.sh 가 읽음). 로봇 namespace 는 스크립트가 붙인다.
+# [12단계, 2026-11-19] per_robot 의 접두어는 로봇+프로파일(configs/gazebo_robots.yaml): 기본 /at00/cmd_vel, /bt10/cmd_vel …,
+#   none 모드면 접두어 없음(/cmd_vel). record_bag.sh --ns 로 직접 줄 수도 있다.
+common:
+  - /gate/state
+  - /harness/step
+  - /tf
+  - /tf_static
+per_robot:
+  - cmd_vel
+  - odom
+  - scan
+  - camera/image_raw/compressed
+  - perception/lane
+  - trailer/config

@@ -1,0 +1,43 @@
+# =============================================================================
+# gazebo_chain.yaml — 가제보 연결 시험 설정 (20단계 블록 3-연결, 2026-11-20). 판정 기준(gate)은 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/gazebo_chain.sh → data_tools/gazebo_chain_eval.py
+#   시험 두 종류(각 구간은 이미 단독 시험을 통과한 기능을 이어 붙인 것):
+#     exit_drive  출차(park_node, 경로 파일) → 같은 자리에서 차선 추종(lane_follow_node, 카메라)으로 인계해 달린다.
+#     lc_enter    차선변경(lane_follow_node 2→1번) → 1번 차선을 따라가다 입차 경로 구간에 들어서면 park_node 로 인계해 입차한다.
+#   ⚠ 인계 방식(시뮬레이션 한정, 실제 로봇에는 위치 정보가 따로 필요함 → 라이다 SLAM/AMCL 과제와 연결):
+#     인계 때 앞 구간 노드를 끄고 로봇이 멈춘 뒤(stop_wait_s 안) 가제보 실제 자세를 읽어 다음 구간(입차 park_node)의 시작 자세로 준다.
+#     즉 '달리다 인계'가 아니라 '멈췄다 인계'이고, 인계 위치는 가제보 실제값이다(실제 위치 추정이 아님). 이 한계는 결과에 항상 함께 적는다.
+#   각 구간 판정은 단독 시험의 기준을 그대로 쓴다: 출차 = gazebo_park.yaml gate.exit, 차선변경 = gazebo_lane_change.yaml gate(바퀴 기준),
+#     입차 = gazebo_park.yaml gate.enter. 여기에는 연결에만 필요한 기준(drive 구간, 인계)을 둔다.
+# 판정 해석(결과 보기 전에 고정):
+#   exit_drive : ① 출차 구간 gate.exit 충족(완주 포함) ② 인계 후 로봇이 stop_wait_s 안에 멈춤 ③ 차선 추종 구간: 인계 뒤 주행 거리 drive_m(m) 완주(시간 안에)
+#                ④ 주행 거리 settle_after_m 이후 목표 차선 중심 대비 |offset| 최대 ≤ offset_abs_cm_max.   (목표 차선 = 출차 경로의 target_lane)
+#   lc_enter   : ① 차선변경 구간: gazebo_lane_change.yaml gate 충족(입차 인계 직전까지의 기록으로 판정) ② 인계 가능한 위치(입차 경로 시작~합류 전 구간)에서
+#                인계되고 로봇이 stop_wait_s 안에 멈춤 ③ 입차 구간 gate.enter 충족.
+#   사례(반복 n 회): n 회 모두 PASS = 안정 통과, 1~n−1 = 불안정, 0 = 실패.
+# =============================================================================
+version: 1
+gate:                                   # [결과 전 고정 — 바꾸려면 다시 승인]
+  exit_drive:
+    drive_m: 1.5                        # 인계 뒤 달려야 하는 거리(실제 위치 경로 길이)
+    settle_after_m: 0.5                 # 정지 상태에서 차선 추종이 시작되므로 이만큼 달린 뒤부터 offset 을 본다
+    offset_abs_cm_max: 3.0
+  handoff:
+    stop_wait_s: 4.0                    # 앞 구간 노드를 끈 뒤 이 시간(시뮬레이션 s) 안에 속도 < stop_speed_mps 가 되어야 한다
+    stop_speed_mps: 0.01
+  lc_enter:
+    window_margin_m: 0.25               # 입차 경로 곡선 시작(합류 위상) 이만큼 전까지만 인계 허용(그 뒤는 곡선이라 인계 위치로 부적합)
+    need_extra_m: 0.02                  # 차선변경 판정에 필요한 주행(s_tr)을 이만큼 넘긴 뒤 인계
+run:
+  perception: configs/perception_gazebo.yaml
+  start_wait_s: 3.0                     # 생성 뒤 인식 안정 대기(시뮬레이션 s)
+  timeout_s: 150.0                      # 전체 시뮬레이션 시간 한도
+  node_start_timeout_s: 30.0            # 노드의 set_parameters 서비스가 뜨기를 기다리는 시간(실제 s)
+  lane_follow_footprint: {length_m: 0.14, width_m: 0.13, wheel_separation_m: 0.0961, wheel_width_m: 0.02}   # 선 침범 판정용(차선변경 평가기와 같은 값)
+scenarios:
+  chain_exit_T00:     {kind: exit_drive, robot: robot_a, profile: T00, park_scenario: exit_T00}
+  chain_exit_T10:     {kind: exit_drive, robot: robot_b, profile: T10, park_scenario: exit_T10}
+  chain_lc_enter_T00: {kind: lc_enter,   robot: robot_a, profile: T00, park_scenario: enter_T00, from_track: 2, to_track: 1}
+  chain_lc_enter_T10: {kind: lc_enter,   robot: robot_b, profile: T10, park_scenario: enter_T10, from_track: 2, to_track: 1}
+repeat:
+  n: 5

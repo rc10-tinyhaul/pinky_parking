@@ -1,0 +1,45 @@
+{
+ "source": "가제보 dynamic_pose 실제 위치(정답 값), 트레일러 모델 없음 — 가제보 결과, 실제 로봇 성능 아님",
+ "frame": "world: 원점=트랙 타원 중심, +x 오른쪽, +y 위(지도 위쪽), 반시계(ccw) 주행 (configs/arena.yaml, 단위 mm 로 변환해 저장)",
+ "yaw": "+x 축 기준 반시계 [rad]",
+ "time_axis": "시뮬레이션 s, 실행 시작 기준([TL sim ...] 시각과 같음)",
+ "run_id": "R20261120_215903_7933_demo_scenario",
+ "from": 1,
+ "upto": 8,
+ "shortcut": true,
+ "sample_min_dt_s": 0.01,
+ "arena_yaml_sha256_12": "2e41ca29b8bf",
+ "robot": "robot_b",
+ "profile": "T10",
+ "ns": "/bt10",
+ "model": "pinky_bt10",
+ "n_samples": 13787,
+ "unit": "mm",
+ "columns": [
+  "t_s",
+  "step_id",
+  "step_name",
+  "sub_state",
+  "x_mm",
+  "y_mm",
+  "yaw_rad",
+  "yaw_deg"
+ ],
+ "step_names": [
+  "[0] 시작 대기",
+  "[1] 동시 출차",
+  "[1→2] 전환(인계: park_node 종료·정지 확인·차선 추종 시작)",
+  "[2] 일반주행",
+  "[3] a 차선변경 1→2",
+  "[4] 앞뒤 간격 조절",
+  "[5~8] shortcut(a,b 동시 입차)"
+ ],
+ "sub_states": [
+  "",
+  "drive",
+  "stopping",
+  "enter",
+  "done",
+  "fail"
+ ]
+}

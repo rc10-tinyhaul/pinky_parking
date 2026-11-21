@@ -1,0 +1,45 @@
+# =============================================================================
+# gazebo_lane_change.yaml — 가제보 차선변경 시험 설정 (19단계 작업 1, 2026-11-19). 판정 기준(gate)은 결과를 보기 전에 고정한다.
+#   쓰는 곳: scripts/gazebo_lane_change.sh → data_tools/gazebo_lane_change_eval.py
+#   시험: 로봇 1대(앞차 없음)가 2번 트랙(바깥)을 따라가다 직선 구간이 시작되는 곳에서 1번 트랙(안쪽)으로 차선변경(카메라 인식만 사용).
+#         반시계 주행에서 안쪽 = 왼쪽이라 횡이동은 +19cm. 변경 길이 S = trailer.yaml lane_change_len_cm(T00 75cm [v11, 2026-11-20 — 원래 60cm = 직선 전체]).
+#         T00 먼저 시험(사용자 승인 2026-11-19 22:31), T10/T15 는 이 기준을 그대로 쓰되 별도 승인 후 [2026-11-20 5-0: T10 단독 시험 승인 — gazebo_lane_change.sh --robot robot_b --profile T10 (gate 수치는 그대로)].
+#   판정에 쓰는 위치는 가제보 실제 위치(dynamic_pose). 'offset' 은 목표 차선(1번) 중심 기준, 왼쪽 +. 거리 s_tr 은 시작(요청 시점)부터 실제 주행한 경로 길이.
+#   단위: m, cm, s. 가제보 결과는 실제 로봇 성능이 아니다.
+#
+# 판정 해석(결과 보기 전에 고정 — 모호한 부분을 여기서 못박는다):
+#   ① 정착: s_tr ≥ S + settle_after_m 인 모든 샘플에서 |offset| ≤ settle_abs_offset_cm_max  (변경 길이가 끝난 뒤 0.3m 안에 ±3cm 안에 들어와 이후 벗어나지 않음)
+#   ② 평균: S+settle_after_m ≤ s_tr ≤ S+settle_after_m+avg_window_m 구간(1m, 반원 포함)의 평균 |offset| ≤ mean_abs_offset_cm_max
+#   ③ 선 침범 없음 [2026-11-20 01:24 사용자 승인으로 변경(version 2) — 아래 '변경 이력' 참조]: touch_basis 가 wheel 이면 바퀴 접지점 두 개가,
+#      body(version 1)면 몸체 네 모서리가 출발 차선 바깥선(2번 트랙 바깥 선 안쪽 가장자리)과 목표 차선 안쪽선(1번 트랙 안쪽 선 가장자리)을
+#      넘은 샘플 수 ≤ line_touch_max. 가운데 선(1·2번 사이)을 건너는 것은 침범이 아니다(차선변경이므로).
+#   ④ 넘침(overshoot): 목표 차선 중심을 안쪽으로 지나친 최대량 ≤ overshoot_cm_max  (s_tr ≥ 0 인 모든 샘플의 최대 offset)
+#   ⑤ 완주: s_tr 가 S+settle_after_m+avg_window_m 에 도달해야 한다(시간 한도 안에). 못 하면 FAIL.
+#   변경 이력(정직 기록): version 1 = 몸체 모서리 기준. v11 시험 15회(E0230~E0245)에서 침범이 모두 차선변경 완료 한참 뒤 호 탈출 구간(s 1.9~2.1m)의 일반 추종 과도에서
+#     0.02~0.17cm(최대 1.7mm) 나왔고, 1번 트랙 기준선(차선변경 없음)도 5회 중 4회 같은 이유로 침범해(E0247~E0252) 차선변경만으로는 해소 불가 → 시험 뒤에 사용자가
+#     바퀴 접지 기준(version 2)으로 변경 승인. 몸체 기준 수치도 touches_body 로 계속 기록. version 1 판정으로 얻은 PASS 수와 version 2 로 다시 계산한 수는 섞어 말하지 않는다.
+#     나머지 기준(①②④⑤)과 수치는 불변.
+#   사례(반복 n 회) 판정: n 회 모두 PASS = 안정 통과, 1~n−1 = 불안정, 0 = 실패 (17·18단계와 같은 규칙).
+# =============================================================================
+version: 2
+gate:                                   # [결과 전 고정 — 바꾸려면 다시 승인]
+  settle_after_m: 0.30
+  settle_abs_offset_cm_max: 3.0
+  avg_window_m: 1.0
+  mean_abs_offset_cm_max: 2.0
+  line_touch_max: 0
+  overshoot_cm_max: 3.0
+  touch_basis: wheel                    # version 2 (version 1 = body). 바퀴 접지점 기준. 바퀴 간격·폭은 run.footprint, 가정·미확인
+run:
+  preset: drive_s2                      # configs/run_presets.yaml — A T00 + B T10. 이 시험은 robot 한 대만 쓴다
+  robot: robot_a
+  profile: T00
+  from_track: 2
+  to_track: 1
+  direction: 1                          # lane_change/request 값: +1 = 왼쪽(반시계 주행 안쪽)
+  start_before_straight_m: 0.30         # 출발 위상 = (한 바퀴 − 이 값): 직선 시작 전 이만큼(위상 m) 아래 반원에서 출발해 차선을 따라가다 직선 시작에서 요청
+  start_wait_s: 3.0                     # 생성 뒤 인식 안정 대기(시뮬레이션 s)
+  timeout_s: 60.0                       # 요청 시작 포함 시뮬레이션 시간 한도
+  footprint: {length_m: 0.14, width_m: 0.13, wheel_separation_m: 0.0961, wheel_width_m: 0.02}   # 몸체: arena.yaml robot.size_mm. [가정] 로봇 기준점을 몸체 중심으로 봄. 바퀴 간격 0.0961=가제보 DiffDrive/launch 값(URDF 0.0811, 실측 전 미확정), 바퀴 폭 0.02 는 실측 안 한 보수적 가정
+repeat:
+  n: 5

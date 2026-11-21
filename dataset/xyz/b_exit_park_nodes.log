@@ -1,0 +1,8 @@
+[INFO] [1795179574.990313828] [bt10.park_node]: 경로 로드: /home/khe/av_track/av_track/logs/gazebo_scenario/R20261120_215903_7933_demo_scenario/b_exit_path.json (모드 exit, 점 2118개, 정지 번호 None)
+[WARN] [1795179575.042800037] [bt10.park_node]: 경로 또는 odom 없음 — 정지 유지
+[WARN] [1795179575.095407242] [bt10.park_node]: 경로 또는 odom 없음 — 정지 유지
+[WARN] [1795179575.145572184] [bt10.park_node]: 경로 또는 odom 없음 — 정지 유지
+[WARN] [1795179575.193079483] [bt10.park_node]: 경로 또는 odom 없음 — 정지 유지
+[WARN] [1795179575.242074397] [bt10.park_node]: 경로 또는 odom 없음 — 정지 유지
+[INFO] [1795179575.299589374] [bt10.park_node]: 주행 시작: 모드 exit, v 0.1 m/s, 주시거리 15.0 cm, 경로 길이 4.24 m
+[INFO] [1795179726.842427182] [bt10.park_node]: 경로 완료: 남은 거리 0.0 cm, 주행(odom) 4.18 m
