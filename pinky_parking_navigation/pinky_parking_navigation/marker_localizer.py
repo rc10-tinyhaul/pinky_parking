@@ -10,6 +10,9 @@
 - 등록: marker_register 토픽(std_msgs/String, JSON {x, y, yaw} = 로봇의 진짜 위치)을 받으면 지금 보이는
   마커들의 지도 위치를 계산해 markers.yaml 에 저장한다. 자로 잴 필요가 없다.
 - 상태: marker_status 토픽(JSON)으로 보이는 마커, 등록된 마커, 마지막 보정을 낸다 (관제 화면용).
+- 검출: marker_detections 토픽(JSON)으로 지금 보이는 마커마다 번호와 로봇 기준 위치(앞 x, 왼쪽 y,
+  방향 yaw, 거리, 보이는 방향)를 낸다. 0.5 초 안에 본 것만 싣는다 (정밀 주차용, markers.detection).
+- 카메라 값: 카메라 서버 응답에 camera 가 있으면(시뮬레이션) 그 값을, 없으면 markers.yaml 의 값을 쓴다.
 - 달리는 중(특히 도는 중)에는 영상이 늦게 와서 오차가 커지므로, 천천히 움직일 때만 고친다.
 """
 from collections import deque
@@ -59,6 +62,7 @@ class MarkerLocalizer(Node):
         self.lock = threading.Lock()
         self.initialpose = self.create_publisher(PoseWithCovarianceStamped, 'initialpose', 1)
         self.status = self.create_publisher(String, 'marker_status', LATCHED)
+        self.detections = self.create_publisher(String, 'marker_detections', 10)
         self.create_subscription(PoseWithCovarianceStamped, 'amcl_pose', self.on_pose, LATCHED)
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
         self.create_subscription(String, 'marker_register', self.on_register, 1)
@@ -107,10 +111,12 @@ class MarkerLocalizer(Node):
                 with urllib.request.urlopen(f'{self.url}/markers', timeout=1.5) as reply:
                     data = json.loads(reply.read())
                 found = {}
+                focal, center, forward = geo.camera_from_reply(
+                    data, self.focal, self.center, self.forward)
                 for m in data.get('markers', []):
                     result = geo.marker_in_robot(
-                        m['corners'], self.sizes.get(int(m['id']), self.size), self.focal,
-                        self.center, self.forward)
+                        m['corners'], self.sizes.get(int(m['id']), self.size), focal, center,
+                        forward)
                     if result and 0.0 < result['distance'] <= self.max_distance:
                         found[int(m['id'])] = result['pose']
                 with self.lock:
@@ -191,6 +197,10 @@ class MarkerLocalizer(Node):
                     f'마커 {marker_id}: 위치를 {dist * 100:.1f} cm, {math.degrees(turn):.1f} 도 고쳤습니다')
         with self.lock:
             error = self.error
+            latest = self.recent[-1] if self.recent else (0.0, {})
+        fresh = latest[1] if now - latest[0] <= 0.5 else {}
+        self.detections.publish(String(data=json.dumps({'markers': [
+            geo.detection(k, v, k in self.table) for k, v in sorted(fresh.items())]})))
         self.status.publish(String(data=json.dumps({
             'visible': sorted(seen), 'registered': sorted(self.table), 'last': self.last_fix,
             'error': error, 'offset': offset,
