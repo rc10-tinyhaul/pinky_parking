@@ -256,23 +256,25 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const v = r.vehicle || { length: 0.14, width: 0.13, trailer: 0, type: 'T00' };
-    const scale = 128 / 0.29;            // 가장 긴 T15 가 128 px
+    // 가로세로 같은 비율(1:1). 가장 긴 T15 가 128 px 이하, 폭이 캔버스 높이 안에 들어오게.
+    const scale = Math.min(128 / 0.29, (h - 8) / 0.13);
     const right = 140;
     const color = unitColor(r);
-    // 오른쪽이 앞. 몸체 0.14 m, 뒤에 트레일러
-    const bodyL = 0.14 * scale; const bodyW = 0.13 * scale * 0.55;
+    // 오른쪽이 앞. 몸체 = 전체 길이 - 트레일러, 뒤에 트레일러
+    const trailer = v.trailer > 0 ? v.trailer : 0;
+    const bodyL = ((v.length || 0.14) - trailer) * scale; const bodyW = (v.width || 0.13) * scale;
     const cy = h / 2;
     ctx.fillStyle = color;
     ctx.fillRect(right - bodyL, cy - bodyW / 2, bodyL, bodyW);
     ctx.fillStyle = css('--sunk');
     ctx.fillRect(right - 6, cy - bodyW / 2 + 3, 3, bodyW - 6);
-    if (v.trailer > 0) {
-      const tl = v.trailer * scale;
-      const x0 = right - bodyL - 6 - tl;
+    if (trailer > 0) {
+      const tl = trailer * scale; const gap = Math.min(6, tl / 4);
+      const x0 = right - bodyL - tl;
       ctx.strokeStyle = color; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(right - bodyL, cy); ctx.lineTo(right - bodyL - 6, cy); ctx.stroke();
-      ctx.globalAlpha = 0.5; ctx.fillRect(x0, cy - bodyW * 0.42, tl, bodyW * 0.84); ctx.globalAlpha = 1;
-      ctx.strokeRect(x0 + 0.5, cy - bodyW * 0.42 + 0.5, tl - 1, bodyW * 0.84 - 1);
+      ctx.beginPath(); ctx.moveTo(right - bodyL, cy); ctx.lineTo(right - bodyL - gap, cy); ctx.stroke();
+      ctx.globalAlpha = 0.5; ctx.fillRect(x0, cy - bodyW * 0.42, tl - gap, bodyW * 0.84); ctx.globalAlpha = 1;
+      ctx.strokeRect(x0 + 0.5, cy - bodyW * 0.42 + 0.5, tl - gap - 1, bodyW * 0.84 - 1);
     }
     ctx.fillStyle = css('--soft');
     ctx.font = `500 12px ${css('--mono')}`;
@@ -494,7 +496,10 @@
   let view = null;
 
   function bounds() {
-    if (isArena()) { const b = state.layout.board; return { x0: -b.width / 2, y0: -b.height / 2, w: b.width, h: b.height }; }
+    if (isArena()) {
+      const b = state.layout.board;   // x, y = 바닥 왼쪽 아래 모서리 (없으면 원점 가운데)
+      return { x0: b.x ?? -b.width / 2, y0: b.y ?? -b.height / 2, w: b.width, h: b.height };
+    }
     const m = state.map;
     if (m) return { x0: m.origin.x, y0: m.origin.y, w: m.width * m.resolution, h: m.height * m.resolution };
     return { x0: -2, y0: -2, w: 4, h: 4 };
@@ -551,12 +556,20 @@
     // 0.5 m 격자와 눈금
     ctx.strokeStyle = css('--rule'); ctx.lineWidth = 1;
     ctx.fillStyle = css('--muted'); ctx.font = `11px ${css('--mono')}`;
-    for (let v = -1; v <= 1.001; v += 0.5) {
-      const [px] = toPx(v, 0); const [, py] = toPx(0, v);
+    const ticks = (lo, len) => {
+      const out = [];
+      for (let v = Math.ceil(lo / 0.5 - 1e-6) * 0.5; v <= lo + len + 1e-6; v += 0.5) out.push(v);
+      return out;
+    };
+    for (const v of ticks(b.x0, b.w)) {
+      const [px] = toPx(v, 0);
       ctx.beginPath(); ctx.moveTo(Math.round(px) + 0.5, by); ctx.lineTo(Math.round(px) + 0.5, by + b.h * view.s); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillText(minus((v + 0).toFixed(1)), px, by + b.h * view.s + 15);
+    }
+    for (const v of ticks(b.y0, b.h)) {
+      const [, py] = toPx(0, v);
       ctx.beginPath(); ctx.moveTo(bx, Math.round(py) + 0.5); ctx.lineTo(bx + b.w * view.s, Math.round(py) + 0.5); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.fillText(minus(v.toFixed(1)), px, by + b.h * view.s + 15);
-      ctx.textAlign = 'right'; ctx.fillText(minus(v.toFixed(1)), bx - 6, py + 4);
+      ctx.textAlign = 'right'; ctx.fillText(minus((v + 0).toFixed(1)), bx - 6, py + 4);
     }
     // 트랙: 바깥 R + 차선 폭 반 ~ 안쪽 R - 차선 폭 반 을 아스팔트로
     const radii = L.tracks.map((t) => t.radius);
@@ -642,18 +655,20 @@
     const [px, py] = toPx(r.pose.x, r.pose.y);
     const s = view.s; const color = unitColor(r);
     ctx.save(); ctx.translate(px, py); ctx.rotate(-r.pose.yaw);
-    const bl = 0.14 * s; const bw = (v.width || 0.13) * s;
-    if (v.trailer > 0) {
-      const tl = v.trailer * s; const gap = 0.012 * s;
+    // 실제 크기 그대로: 몸체 + 트레일러 = 전체 길이 (T10 240 mm, T15 290 mm). 연결부 틈은 트레일러 길이 안에서 뺀다.
+    const trailer = v.trailer > 0 ? v.trailer : 0;
+    const bl = ((v.length || 0.14) - trailer) * s; const bw = (v.width || 0.13) * s;
+    if (trailer > 0) {
+      const tl = trailer * s; const gap = Math.min(0.012 * s, tl / 4);
       ctx.strokeStyle = color; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-bl / 2, 0); ctx.lineTo(-bl / 2 - gap, 0); ctx.stroke();
-      ctx.fillStyle = color; ctx.globalAlpha = 0.45; ctx.fillRect(-bl / 2 - gap - tl, -bw * 0.42, tl, bw * 0.84); ctx.globalAlpha = 1;
-      ctx.lineWidth = 1.5; ctx.strokeRect(-bl / 2 - gap - tl, -bw * 0.42, tl, bw * 0.84);
+      ctx.fillStyle = color; ctx.globalAlpha = 0.45; ctx.fillRect(-bl / 2 - tl, -bw * 0.42, tl - gap, bw * 0.84); ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.5; ctx.strokeRect(-bl / 2 - tl, -bw * 0.42, tl - gap, bw * 0.84);
     }
     ctx.fillStyle = color; ctx.fillRect(-bl / 2, -bw / 2, bl, bw);
     ctx.fillStyle = css('--board'); ctx.fillRect(bl / 2 - 0.018 * s, -bw / 2 + 0.02 * s, 0.01 * s, bw - 0.04 * s);
     if (r.name === state.selected) {
-      const ext = bl / 2 + 6; const back = -bl / 2 - (v.trailer > 0 ? v.trailer * s + 0.012 * s : 0) - 6; const half = bw / 2 + 6;
+      const ext = bl / 2 + 6; const back = -bl / 2 - trailer * s - 6; const half = bw / 2 + 6;
       const c = 8;
       ctx.strokeStyle = css('--select'); ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -666,7 +681,7 @@
     // 호출 부호
     ctx.font = `700 12px ${css('--mono')}`; ctx.textAlign = 'center';
     const tag = sign(r);
-    const reach = (0.07 + (v.trailer > 0 ? v.trailer + 0.012 : 0)) * s;   // 로봇이 차지하는 반경
+    const reach = bl / 2 + trailer * s;   // 로봇이 차지하는 반경
     const tx = px + Math.max(bw / 2, reach * Math.abs(Math.sin(r.pose.yaw)), bl / 2) + 14;
     ctx.fillStyle = color; ctx.fillRect(tx - 9, py - 9, 18, 17);
     ctx.fillStyle = '#0c0c0e'; ctx.fillText(tag, tx, py + 4);

@@ -25,7 +25,7 @@ window.PinkyDemo = (() => {
   };
   const CALLSIGNS = { A: 'pinky1', B: 'pinky2' };
   const ARENA = {
-    kind: 'arena', name: '경기장', board: { width: 2.0, height: 2.0 }, straight: 0.6, lane_width: 0.19, tape_width: 0.02,
+    kind: 'arena', name: '경기장', board: { x: -1.2, y: -1.0, width: 2.0, height: 2.0 }, straight: 0.6, lane_width: 0.19, tape_width: 0.02,
     tracks: [{ id: 1, name: '1번 트랙 (안쪽)', radius: 0.405, vehicles: ['T00'] }, { id: 2, name: '2번 트랙 (바깥쪽)', radius: 0.595, vehicles: ['T10', 'T15'] }],
     slots: {
       slot_10: { x: 0, y: -0.15, yaw: PI2, width: 0.19, length: 0.3, marker: 10 },

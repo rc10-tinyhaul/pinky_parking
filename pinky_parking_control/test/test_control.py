@@ -155,6 +155,30 @@ def test_stadium_follows_drawing():
     assert d < 0.01 and math.isclose(s, 0.6 + math.pi * 0.405 + 0.3, abs_tol=0.01)
 
 
+def test_arena_fits_board_like_drawing():
+    """도면(docs/arena_map_2000x2000.jpg, 1 px = 1 mm)처럼 모든 것이 바닥 안에 1:1 로 들어간다."""
+    data = read_yaml('arena.yaml')
+    b = data['board']
+    x0, y0, x1, y1 = b['x'], b['y'], b['x'] + b['width'], b['y'] + b['height']
+    assert (b['width'], b['height']) == (2.0, 2.0)
+    # 도면에서 원점(트랙 중심)은 그림 왼쪽에서 1200 mm, 위에서 1000 mm
+    assert math.isclose(-x0, 1.2) and math.isclose(y1, 1.0)
+    # 바깥 트랙 테이프 바깥선
+    outer = max(t['radius'] for t in data['tracks']) + data['lane_width'] / 2
+    top = data['straight'] / 2 + outer
+    assert x0 < -outer and outer < x1 and y0 <= -top and top <= y1
+    # 주차 칸, 주유구역, 대기선 (세로로 놓인 칸: 가로 = width, 세로 = length)
+    zones = list(data['slots'].values()) + [data['fuel']['zone']]
+    for z in zones:
+        assert x0 <= z['x'] - z['width'] / 2 and z['x'] + z['width'] / 2 <= x1
+        assert y0 <= z['y'] - z['length'] / 2 and z['y'] + z['length'] / 2 <= y1
+    w = data['fuel']['wait_line']
+    assert x0 <= w['x'] - w['width'] / 2 and w['x'] + w['width'] / 2 <= x1
+    # 차종: 전체 길이 = 몸체 140 mm + 트레일러
+    for v in data['vehicles'].values():
+        assert math.isclose(v['length'], 0.14 + v['trailer'])
+
+
 def test_arena_actions_make_waypoints(arena):
     lap = arena.drive('pinky1', 1)
     assert lap.target == '1번 트랙' and len(lap.poses) == 12
