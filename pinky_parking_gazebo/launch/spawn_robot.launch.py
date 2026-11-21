@@ -17,6 +17,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from pinky_parking_description.vehicles import vehicle_urdf
 from pinky_parking_gazebo.sim import bridge_entries
+from pinky_parking_gazebo.sim import camera_port
 from pinky_parking_gazebo.sim import sim_urdf
 import yaml
 
@@ -71,6 +72,11 @@ def setup(context):
             remappings=[(f'{name}/camera/image_raw{s}', f'camera/image_raw{s}')
                         for s in suffixes],
             parameters=[{'use_sim_time': True}]))
+        # 실물 로봇의 카메라 서버(scripts/pinky_camera.py)와 같은 /markers 를 낸다 (마커 위치 보정용)
+        actions.append(Node(
+            package='pinky_parking_gazebo', executable='sim_camera', name='sim_camera',
+            output='screen', additional_env=env,
+            parameters=[{'port': camera_port(arg('domain_id')), 'use_sim_time': True}]))
     return actions
 
 
@@ -81,7 +87,9 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='0.0', description='스폰 위치 x [m]'),
         DeclareLaunchArgument('y', default_value='0.0', description='스폰 위치 y [m]'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='스폰 방향 [rad]'),
-        DeclareLaunchArgument('camera', default_value='true', description='카메라 영상 브리지'),
+        DeclareLaunchArgument(
+            'camera', default_value='true',
+            description='카메라 영상 브리지와 카메라 서버(sim_camera, 포트 8000 + 도메인)'),
         DeclareLaunchArgument(
             'vehicle', default_value='T00',
             description='차종 (pinky_parking_description/config/vehicles.yaml)'),
