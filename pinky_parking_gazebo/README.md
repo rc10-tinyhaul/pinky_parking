@@ -23,7 +23,7 @@ Gazebo 월드를 띄웁니다.
 | `name` | (필수) | 로봇 이름. Gazebo 토픽 접두어(`pinky1/scan`)로 씁니다 |
 | `domain_id` | (필수) | 이 로봇의 `ROS_DOMAIN_ID` |
 | `x`, `y`, `yaw` | `0.0` | 스폰 위치 [m], 방향 [rad] |
-| `camera` | `true` | 카메라 영상 브리지 |
+| `camera` | `true` | 카메라 영상 브리지와 시뮬레이션 카메라 서버(`sim_camera`, 포트 8000 + 도메인) |
 | `cam_tilt_deg` | `8` | 카메라 기울기 [deg] |
 | `vehicle` | `T00` | 차종(`pinky_parking_description`의 `config/vehicles.yaml`) |
 
@@ -46,6 +46,7 @@ LiDAR 프레임은 로봇 정면 기준 180° 돌아 있습니다.
 | 명령 | 설명 |
 |---|---|
 | `marker_check [--seconds S] [--save 파일.png]` | 그 도메인의 `/camera/image_raw`(`camera:=true`)를 S초(기본 3) 받아 보이는 마커 번호와 화면 위치를 출력합니다. 못 찾으면 종료 코드 1 |
+| `sim_camera` | 시뮬레이션 카메라 서버. 실물 로봇의 `scripts/pinky_camera.py`와 같은 `/markers`(JSON), `/snapshot.jpg`, `/stream`을 냅니다. `/markers`에는 Gazebo 카메라 값(`camera`: 초점 거리, 화면 중심, 앞쪽 거리)을 더 싣습니다. `spawn_robot.launch.py`가 `camera:=true`일 때 포트 8000 + 도메인(pinky1 = 8011)으로 띄웁니다 |
 
 ```bash
 ROS_DOMAIN_ID=11 ros2 run pinky_parking_gazebo marker_check

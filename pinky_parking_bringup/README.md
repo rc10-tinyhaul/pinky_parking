@@ -13,7 +13,7 @@
 | `map` | `pinky_parking_navigation/maps/arena.yaml` | 지도 |
 | `gui` | `true` | Gazebo 창 |
 | `headless` | `false` | 화면 없는 환경용 |
-| `camera` | `true` | 카메라 영상 브리지 |
+| `camera` | `true` | 카메라 영상 브리지. 켜면 로봇마다 시뮬레이션 카메라 서버와 마커 위치 보정(`marker_localizer`)도 뜹니다 |
 | `nav` | `true` | Nav2 실행 |
 | `nav_delay` | `15.0` | Nav2 시작 전 대기 [s] |
 
