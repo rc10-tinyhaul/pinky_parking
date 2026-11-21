@@ -74,3 +74,17 @@ def test_sim_camera_values_recover_pose():
     assert result['pose'][0] == pytest.approx(0.30, abs=0.004)
     assert result['pose'][1] == pytest.approx(0.02, abs=0.004)
 
+
+def test_arena_markers_match_arena_layout():
+    """markers.yaml 의 경기장 마커(10, 11, 20, 30)는 경기장 원본(arena.yaml)과 같은 자리다."""
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    arena_file = root / 'pinky_parking_control/config/arena.yaml'
+    if not arena_file.is_file():
+        pytest.skip('경기장 원본이 없습니다')
+    arena = yaml.safe_load(arena_file.read_text(encoding='utf-8'))['markers']['items']
+    table = yaml.safe_load((root / 'pinky_parking_navigation/config/markers.yaml')
+                           .read_text(encoding='utf-8'))['markers']
+    for marker_id, m in arena.items():
+        assert table[marker_id] == {'x': m['x'], 'y': m['y'], 'yaw': m['yaw']}
