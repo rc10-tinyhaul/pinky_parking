@@ -80,3 +80,8 @@ def test_slam_params_own_frame_and_frequent_matching():
     assert slam['map_frame'] == 'slam'                  # map -> slam 은 launch 가 시작 자리로 잇는다
     assert slam['minimum_travel_distance'] == 0.1 and slam['mode'] == 'mapping'
     assert original['slam_toolbox']['ros__parameters']['minimum_travel_distance'] == 0.5
+
+
+def test_waypoint_follower_stops_on_failure():
+    params = nav2_params(base(), 0.0, 0.0, 0.0)
+    assert params['waypoint_follower']['ros__parameters']['stop_on_failure'] is True
