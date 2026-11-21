@@ -432,6 +432,24 @@ def test_park_poses_enter_from_open_end_and_skip_when_parked():
     assert len(layout.park_poses(s11, down)) == 1
     crooked = {'x': 0.02, 'y': 0.16, 'yaw': math.pi / 2 + 0.4}        # 자리는 맞지만 비뚤다
     assert len(layout.park_poses(s11, crooked)) == 2
+    # 트레일러 차량 B 의 시작 자리: 10번 칸 중심보다 5 cm 아래, 아래를 봄 → 옮기지 않는다
+    b_start = {'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}
+    stay = [{'x': 0.0, 'y': -0.2, 'yaw': round(-math.pi / 2, 4)}]
+    assert layout.park_poses(s10, b_start) == stay
+    too_far = {'x': 0.0, 'y': -0.24, 'yaw': -math.pi / 2}               # 9 cm 어긋나면 다시 들어간다
+    assert len(layout.park_poses(s10, too_far)) == 2
+    toward_other = {'x': 0.0, 'y': 0.09, 'yaw': math.pi / 2}            # 11번 칸에서 10번 칸 쪽으로 6 cm
+    assert len(layout.park_poses(s11, toward_other)) == 2
+
+
+def test_slot_pose_uses_home_inside_slot():
+    """칸 기준 위치 맞추기: 시작 자리가 그 칸 안이면 시작 자리(B 는 아래를 보고 5 cm 아래)."""
+    robots = [{'name': 'pinky1', 'domain_id': 11, 'x': 0.0, 'y': 0.15, 'yaw': math.pi / 2},
+              {'name': 'pinky2', 'domain_id': 12, 'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}]
+    fleet = Fleet(robots, ArenaLayout(read_yaml('arena.yaml')), CONFIG, FakeLink, CALLSIGNS)
+    b_home = {'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}
+    assert fleet.set_pose('pinky2', slot='slot_10')['pose'] == b_home
+    assert fleet.set_pose('pinky1', slot='slot_10')['pose']['y'] == pytest.approx(-0.15)
 
 
 def test_precise_tolerance_for_parking_only():

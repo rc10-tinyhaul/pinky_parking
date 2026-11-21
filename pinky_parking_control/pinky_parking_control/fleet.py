@@ -10,6 +10,7 @@
 행동 하나는 Nav2 목표 하나(navigate_to_pose) 또는 경유점 목록(follow_waypoints)이 된다.
 좌표는 배치(layout.py)가 정한다: 경기장 도면 또는 지금 시뮬레이션용 공장 월드.
 """
+import math
 import threading
 import time
 
@@ -30,6 +31,7 @@ PENDING = {
     'park_precise': '주차 칸 정밀 정렬은 준비 중입니다 (#7 마커 검출, #8 정밀 정렬)',
 }
 TELEOP_TIMEOUT_S = 0.5   # 직접 운전 명령이 이만큼 끊기면 멈춘다 (손을 떼면 선다)
+HOME_IN_SLOT = 0.08   # 시작 자리가 칸 가운데에서 이만큼 안이면 그 칸의 자리로 본다 [m] (화면의 '칸 안' 기준과 같음)
 PRECISE_TOLERANCE = (0.03, 0.08)   # 주차·주유 진입의 도착 허용 오차 (거리 m, 방향 rad ≈ 5 도)
 NORMAL_YAW_TOLERANCE = 0.25        # 그 밖의 이동에서 방향 허용 오차 (공식 값)
 
@@ -225,14 +227,28 @@ class Fleet:
 
     # ---- 위치 다시 맞추기 ----------------------------------------------
     def set_pose(self, name, pose=None, slot=None):
-        """로봇을 손으로 옮겨 놓은 뒤 '지금 여기 있다'고 알려 준다. slot 이면 그 주차 칸 가운데."""
+        """로봇을 손으로 옮겨 놓은 뒤 '지금 여기 있다'고 알려 준다. slot 이면 그 칸의 자리(_slot_pose)."""
         link = self._link(name)
         if link.task is not None and not link.task.done:
             raise TaskBusy(f'{name} 은(는) 작업 중입니다. 먼저 멈추세요')
-        target = self._pick(self.layout.slots, slot, '주차 칸') if slot else parse_pose(pose)
+        target = self._slot_pose(name, slot) if slot else parse_pose(pose)
         link.set_pose(target)
         self.pose_confirmed[name] = True
         return {'robot': name, 'pose': target}
+
+    def _slot_pose(self, name, slot):
+        """
+        로봇이 주차 칸에 서 있을 때의 자리.
+
+        그 로봇의 시작 자리(robots.yaml)가 이 칸 안이면 시작 자리를 쓴다. B 는 10번 칸에서 아래를 보고
+        칸 가운데보다 5 cm 아래에 서므로, 칸 가운데·칸 방향을 쓰면 방향이 반대가 된다.
+        그 밖에는 칸 가운데와 칸 방향이다.
+        """
+        center = self._pick(self.layout.slots, slot, '주차 칸')
+        home = self.home.get(name)
+        if home and math.hypot(home['x'] - center['x'], home['y'] - center['y']) <= HOME_IN_SLOT:
+            return dict(home)
+        return center
 
     def reset_home(self, teleport=None):
         """
@@ -260,7 +276,7 @@ class Fleet:
         """
         지금 카메라에 보이는 마커의 지도 위치를 등록한다.
 
-        slot 을 주면 로봇이 그 주차 칸 가운데에 있다고 보고(가장 정확), 비우면 로봇이 지금 믿는
+        slot 을 주면 로봇이 그 주차 칸의 자리(_slot_pose)에 있다고 보고(가장 정확), 비우면 로봇이 지금 믿는
         위치를 쓴다 (트랙 위의 마커: 칸에서 위치를 맞춘 직후 가까운 마커부터 차례로 등록한다).
         """
         link = self._link(name)
@@ -270,7 +286,7 @@ class Fleet:
         if not status.get('visible'):
             raise ValueError('지금 카메라에 보이는 마커가 없습니다')
         if slot:
-            target = self._pick(self.layout.slots, slot, '주차 칸')
+            target = self._slot_pose(name, slot)
             self.pose_confirmed[name] = True
         else:
             target = self._pose(name)

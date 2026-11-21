@@ -16,7 +16,10 @@ PATH_STEP = 0.03         # 연속 경로의 점 간격 [m]
 LAP_END_GAP = 0.15       # 한 바퀴 경로를 출발점보다 이만큼 앞에서 끝낸다 (끝 = 시작이면 출발하자마자 도착으로 친다)
 LANE_CHANGE_LENGTH = 0.6  # 차선을 옮기는 동안 나아가는 거리 [m]
 PARK_ENTRY = 0.28        # 주차 칸 가운데에서 이만큼 뒤에 먼저 서서 방향을 맞춘 뒤 똑바로 들어간다 [m]
-PARKED_NEAR = (0.04, 0.10)   # 이미 칸 가운데에 이만큼(거리 m, 방향 rad) 가까우면 다시 들어가지 않는다
+PARKED_NEAR = (0.04, 0.10)   # 이미 칸 가운데에 이만큼(옆 거리 m, 방향 rad) 가까우면 다시 들어가지 않는다
+# 칸의 긴 방향으로 열린 쪽(옆 칸 반대쪽)으로는 이만큼 어긋나도 주차된 것으로 본다 [m]. 트레일러 차량은
+# 트레일러가 칸 안에 들도록 칸 가운데보다 열린 쪽에 선다 (robots.yaml 의 B 는 5 cm)
+PARKED_ALONG = 0.06
 
 
 class NotInLayout(Exception):
@@ -163,7 +166,8 @@ class ArenaLayout:
         다른 칸에서 먼 쪽(열린 쪽)에 먼저 서서 방향을 맞추고 똑바로 들어간다. 10·11번 칸처럼 칸이
         이어져 있으면 옆 칸을 지나 들어가지 않는다 (거기 다른 차가 서 있을 수 있다). 후진하지 않으므로
         들어간 방향 그대로 선다: 11번은 위에서 들어와 아래를 보고, 10번은 아래에서 들어와 위를 본다.
-        이미 칸 안에 바로(어느 쪽을 보든) 서 있으면 그대로 둔다.
+        이미 칸 안에 바로(어느 쪽을 보든) 서 있으면 그대로 둔다. 열린 쪽으로 PARKED_ALONG 까지 어긋난 자리는
+        그 자리에서 칸 가운데 줄로만 맞춘다(옮기지 않는다). 옆 칸 쪽으로 어긋났으면 다시 들어간다.
         """
         yaw = slot_pose['yaw']
         ends = []
@@ -175,15 +179,22 @@ class ArenaLayout:
                       if (o['x'], o['y']) != (slot_pose['x'], slot_pose['y'])]
             heading = normalize_angle(yaw if sign < 0 else yaw + math.pi)   # 진입 자리 → 칸 가운데
             ends.append((min(others, default=float('inf')), sign, entry, heading))
-        _, _, entry, heading = max(ends, key=lambda e: (e[0], -e[1]))    # 같으면 뒤쪽 끝
+        _, open_sign, entry, heading = max(ends, key=lambda e: (e[0], -e[1]))   # 같으면 뒤쪽 끝
         if pose is not None:
-            gap = math.hypot(pose['x'] - slot_pose['x'], pose['y'] - slot_pose['y'])
+            dx, dy = pose['x'] - slot_pose['x'], pose['y'] - slot_pose['y']
+            along = dx * math.cos(yaw) + dy * math.sin(yaw)       # 칸의 긴 방향으로 어긋난 거리
+            side = -dx * math.sin(yaw) + dy * math.cos(yaw)       # 옆으로 어긋난 거리
             turn = min(abs(normalize_angle(pose['yaw'] - yaw)),
                        abs(normalize_angle(pose['yaw'] - yaw - math.pi)))
-            if gap <= PARKED_NEAR[0] and turn <= PARKED_NEAR[1]:
-                return [{**slot_pose, 'yaw': round(normalize_angle(
-                    yaw if abs(normalize_angle(pose['yaw'] - yaw)) <= math.pi / 2
-                    else yaw + math.pi), 4)}]
+            toward_open = along * open_sign                       # 열린 쪽으로 어긋난 거리 (+)
+            near = abs(side) <= PARKED_NEAR[0] and -PARKED_NEAR[0] <= toward_open <= PARKED_ALONG
+            if near and turn <= PARKED_NEAR[1]:
+                along = along if abs(along) > PARKED_NEAR[0] else 0.0   # 가까우면 칸 가운데로
+                return [{'x': round(slot_pose['x'] + along * math.cos(yaw), 4),
+                         'y': round(slot_pose['y'] + along * math.sin(yaw), 4),
+                         'yaw': round(normalize_angle(
+                             yaw if abs(normalize_angle(pose['yaw'] - yaw)) <= math.pi / 2
+                             else yaw + math.pi), 4)}]
         return [{'x': round(entry['x'], 4), 'y': round(entry['y'], 4), 'yaw': round(heading, 4)},
                 {'x': slot_pose['x'], 'y': slot_pose['y'], 'yaw': round(heading, 4)}]
 
