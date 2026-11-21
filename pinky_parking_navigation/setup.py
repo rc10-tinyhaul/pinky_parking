@@ -16,6 +16,12 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
+    entry_points={
+        'console_scripts': [
+            'odom_localizer = pinky_parking_navigation.odom_localizer:main',
+            'tf_pose = pinky_parking_navigation.tf_pose:main',
+        ],
+    },
     maintainer='syaseuta',
     maintainer_email='syaseuta@gmail.com',
     description='Nav2 per robot domain on a shared map.',
