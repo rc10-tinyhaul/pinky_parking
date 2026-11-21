@@ -37,4 +37,9 @@ setup(
             'pytest',
         ],
     },
+    entry_points={
+        'console_scripts': [
+            'marker_check = pinky_parking_gazebo.marker_check:main',
+        ],
+    },
 )
