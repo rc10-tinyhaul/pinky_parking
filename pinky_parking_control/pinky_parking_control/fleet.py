@@ -71,6 +71,9 @@ class Fleet:
         self.cameras = dict(config.get('cameras') or {})   # 로봇 이름 → 카메라 영상 주소
         self.links = {r['name']: link_factory(r['name'], r['domain_id'], self._finished)
                       for r in robots}
+        # 시작 자리 (robots.yaml 의 스폰 위치 = 주차된 상태). '주차 자리로' 가 여기로 되돌린다
+        self.home = {r['name']: {'x': float(r['x']), 'y': float(r['y']), 'yaw': float(r['yaw'])}
+                     for r in robots if 'x' in r}
         names = list(self.links)
         for name, url in self.cameras.items():
             if name in self.links:
@@ -160,8 +163,10 @@ class Fleet:
 
     def unpark(self, name, slot):
         # 출차한 자리가 곧 트랙 출발점이라 정밀하게 선다 (느슨하면 차선 밖에서 출발한다)
-        return self._start(name, 'unpark', slot,
-                           [self._pick(self.layout.exits, slot, '출차 위치')], precise=True)
+        exit_poses = self._pick(self.layout.exits, slot, '출차 위치')
+        if not isinstance(exit_poses, list):
+            exit_poses = [exit_poses]
+        return self._start(name, 'unpark', slot, exit_poses, precise=True)
 
     # ---- 주행 ----------------------------------------------------------
     def drive(self, name, track, laps=1):
@@ -228,6 +233,28 @@ class Fleet:
         link.set_pose(target)
         self.pose_confirmed[name] = True
         return {'robot': name, 'pose': target}
+
+    def reset_home(self, teleport=None):
+        """
+        모든 로봇을 시작 자리(주차 상태)로 되돌린다: 작업을 멈추고 위치를 그 자리로 맞춘다.
+
+        teleport(name, pose) 가 True 를 돌려주면 (시뮬레이션) 로봇 모델도 그 자리로 옮긴 것이다.
+        실물은 옮길 수 없으므로 사람이 로봇을 칸에 놓은 뒤 누른다 (위치만 맞춘다).
+        """
+        if not self.home:
+            raise NotInLayout('robots.yaml 에 시작 자리(x, y, yaw)가 없습니다')
+        out = []
+        for name, link in self.links.items():
+            link.cancel('주차 자리로 되돌림')
+        for name, pose in self.home.items():
+            if name not in self.links:
+                continue
+            moved = bool(teleport(name, pose)) if teleport else False
+            self.links[name].set_pose(pose)
+            self.pose_confirmed[name] = True
+            self.stalled.pop(name, None)
+            out.append({'robot': name, 'pose': pose, 'moved': moved})
+        return {'robots': out, 'sim': any(r['moved'] for r in out)}
 
     def register_markers(self, name, slot=''):
         """

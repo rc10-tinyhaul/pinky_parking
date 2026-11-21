@@ -69,7 +69,9 @@ class ArenaLayout:
         self.tracks = {int(t['id']): Stadium(t['radius'], data['straight'])
                        for t in data['tracks']}
         self.slots = {k: parse_pose(v) for k, v in data['slots'].items()}
-        self.exits = {k: parse_pose(v) for k, v in data.get('exits', {}).items()}
+        # 출차: 한 자리 또는 차례로 지나는 자리 목록
+        self.exits = {k: [parse_pose(p) for p in v] if isinstance(v, list) else [parse_pose(v)]
+                      for k, v in data.get('exits', {}).items()}
         self.fuel = {k: parse_pose(data['fuel'][k]) for k in FUEL_STEPS}
         self.vehicles = data['vehicles']
 

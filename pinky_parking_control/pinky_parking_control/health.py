@@ -17,7 +17,10 @@ STALL_TURN = 0.08          # 또는 이만큼 [rad] 돌아야
 REASON_FRESH_S = 6.0       # 이보다 오래된 Nav2 경고는 지금 상황의 사유로 쓰지 않는다
 
 # Nav2 로그 문장의 일부 → 사유 (위에서부터 먼저 맞는 것)
+NAV2_PARTLY_UP = 'Nav2 가 다 켜지지 않았습니다 (켤 때 로봇이 꺼져 있었음). Nav2 를 다시 켜세요'
 LOG_REASONS = (
+    ('Action server is inactive', NAV2_PARTLY_UP),
+    ('Failed to bring up all requested nodes', NAV2_PARTLY_UP),
     ('collision ahead', '앞에 장애물이 있어 멈췄습니다 (라이다가 본 물체)'),
     ('Controller patience exceeded', '장애물 때문에 더 가지 못해 포기했습니다'),
     ('Failed to make progress', '제자리에서 나아가지 못했습니다 (끼임, 바퀴 헛돎)'),

@@ -1,6 +1,7 @@
 # 시연 시나리오 (docs/plan.md 의 "전체 테스트 시연 순서"). 경기장 배치에서만 실행한다.
 # 한 단계 안에서 로봇끼리는 동시에, 같은 로봇의 행동은 적힌 순서대로 한다.
 # do: park, unpark, drive, lane_change, fuel, goto, vehicle(차종 바꾸기), confirm(사람 확인을 기다림)
+#     wait_clear(다른 로봇이 distance m 밖으로 멀어질 때까지 기다림. 옆을 지나다 서로 막히지 않게)
 # pending: 아직 없는 기능에 기대는 단계. 실행하면 건너뛰고 기록에 남긴다.
 callsigns: {A: pinky1, B: pinky2}
 
@@ -19,6 +20,7 @@ steps:
       - {robot: A, do: unpark, slot: slot_11}
       - {robot: B, do: unpark, slot: slot_10}
       - {robot: A, do: drive, track: 1}
+      - {robot: B, do: wait_clear, distance: 0.5}   # A 가 출발해 멀어진 뒤 옆 차선으로
       - {robot: B, do: lane_change, to: 2}
       - {robot: B, do: drive, track: 2}
 
@@ -29,6 +31,7 @@ steps:
   - title: A 차선 변경 후 주유구역으로
     detail: A가 2번 트랙으로 옮겨 대기선(30)에 섰다가 주유구역(20)에 들어간다
     actions:
+      - {robot: A, do: wait_clear, distance: 0.5}   # 2번 트랙의 B 옆을 지나지 않게
       - {robot: A, do: lane_change, to: 2}
       - {robot: A, do: fuel, step: wait}
       - {robot: A, do: fuel, step: enter}

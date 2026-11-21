@@ -30,6 +30,7 @@ from pinky_parking_control.model import quaternion_to_yaw
 from pinky_parking_control.model import SUCCEEDED
 from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import yaw_to_quaternion
+from pinky_parking_control.usage import Usage
 from rcl_interfaces.msg import Log
 from rcl_interfaces.msg import Parameter
 from rcl_interfaces.msg import ParameterType
@@ -83,6 +84,8 @@ class RobotLink:
         self.teleop_time = 0.0   # 마지막 직접 운전 명령 시각 (0 = 직접 운전 아님)
         self.speed = {'linear': 0.0, 'angular': 0.0}
         self.battery_v = None
+        self.battery_pct = None                   # 배터리 % (실물 battery/percent)
+        self.usage = Usage()                      # 달린 거리, 바퀴 사용량, 배터리 사용 (서버 켠 뒤)
         self.camera_url = None                    # 실물 로봇의 카메라 영상 주소 (서버 설정)
         self.slam_map, self.slam_seq = None, 0    # SLAM 지도 (localization:=slam 일 때)
         self.slam_tf = None                       # map -> slam 고정 변환 {x, y, yaw}
@@ -97,6 +100,7 @@ class RobotLink:
         self.node.create_subscription(Odometry, 'odom', self._on_odom, 10)
         # 실물 로봇의 배터리 전압 (공식 battery_publisher). 시뮬레이션에는 없어 None 으로 남는다
         self.node.create_subscription(Float32, 'battery/voltage', self._on_battery, 1)
+        self.node.create_subscription(Float32, 'battery/percent', self._on_battery_pct, 1)
         self.node.create_subscription(OccupancyGrid, '/slam_map', self._on_slam_map, LATCHED)
         self.node.create_subscription(TFMessage, '/tf_static', self._on_tf_static, LATCHED)
         self.node.create_subscription(LaserScan, 'scan', self._on_scan, qos_profile_sensor_data)
@@ -144,7 +148,9 @@ class RobotLink:
         twist = msg.twist.twist
         with self._lock:
             self.speed = {'linear': twist.linear.x, 'angular': twist.angular.z}
-            self._stamps['odom'].append(time.time())
+            now = time.time()
+            self._stamps['odom'].append(now)
+            self.usage.on_odom(now, twist.linear.x, twist.angular.z)
 
     def _on_slam_map(self, msg):
         grid = encode_grid(msg)
@@ -190,8 +196,18 @@ class RobotLink:
         self.marker_register.publish(String(data=json.dumps(pose)))
 
     def _on_battery(self, msg):
+        value = float(msg.data)
+        if not 3.0 < value < 12.0:       # 가끔 0.5 V 처럼 튀는 값이 온다 (읽기 오류): 버린다
+            return
         with self._lock:
-            self.battery_v = float(msg.data)
+            self.battery_v = value
+            self.usage.on_battery(value)
+
+    def _on_battery_pct(self, msg):
+        value = float(msg.data)
+        if 0.0 <= value <= 100.0:
+            with self._lock:
+                self.battery_pct = value
 
     def _on_feedback(self, task, feedback_msg):
         feedback = feedback_msg.feedback
@@ -208,7 +224,9 @@ class RobotLink:
     def _on_goal_response(self, task, future):
         handle = future.result()
         if handle is None or not handle.accepted:
-            self._finish(task, FAILED, 'Nav2 가 목표를 거절했습니다')
+            reason = self._recent_reason(time.time())
+            self._finish(task, FAILED, f'Nav2 가 목표를 거절했습니다: {reason}' if reason
+                         else 'Nav2 가 목표를 거절했습니다')
             return
         with self._lock:
             if task is not self.task:
@@ -417,6 +435,8 @@ class RobotLink:
                 'speed': {k: round(v, 3) for k, v in self.speed.items()},
                 'teleop': bool(self.teleop_time),
                 'battery_v': round(self.battery_v, 2) if self.battery_v is not None else None,
+                'battery_pct': round(self.battery_pct) if self.battery_pct is not None else None,
+                'usage': self.usage.to_dict(self.battery_v),
                 'odom_hz': self._rate('odom', now), 'scan_hz': self._rate('scan', now),
                 'slam_seq': self.slam_seq, 'camera_url': self.camera_url,
                 'issue': ({'text': self.issue['text'], 'raw': self.issue['raw'],

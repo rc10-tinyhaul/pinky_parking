@@ -24,6 +24,7 @@ from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import TaskLog
 from pinky_parking_control.model import yaw_to_quaternion
 from pinky_parking_control.scenario import ScenarioRunner
+from pinky_parking_control.usage import Usage
 import pytest
 import yaml
 
@@ -80,6 +81,9 @@ class FakeLink:
 
     def teleop_watchdog(self, now, timeout_s):
         pass
+
+    def set_pose(self, pose):
+        self.pose = dict(pose)
 
     def status(self):
         return {'name': self.name, 'pose': self.pose,
@@ -636,3 +640,72 @@ def test_fleet_status_has_alerts_and_stall(arena):
         time.sleep(0.15)
     status = arena.robot('pinky1')
     assert 'alerts' in status and status['stalled_s'] >= 0.0
+
+
+def test_scenario_wait_clear_waits_for_other_robot():
+    """wait_clear: 다른 로봇이 가까이 있으면 기다리고, 멀어지면 다음 행동으로 간다."""
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, AutoLink, CALLSIGNS)
+    fleet.links['pinky2'].pose = {'x': 0.405, 'y': -0.15, 'yaw': math.pi / 2}   # A 와 0.15 m
+    plan = {'callsigns': CALLSIGNS, 'steps': [{'title': 't', 'actions': [
+        {'robot': 'B', 'do': 'wait_clear', 'distance': 0.5, 'timeout': 5},
+        {'robot': 'B', 'do': 'lane_change', 'to': 2}]}]}
+    runner = ScenarioRunner(fleet, plan, poll_s=0.01)
+    try:
+        runner.start()
+        runner.wait(0.3)
+        assert runner.status()['steps'][0]['state'] == 'running'          # 아직 기다린다
+        fleet.links['pinky1'].pose = {'x': -0.405, 'y': 0.3, 'yaw': -math.pi / 2}   # A 가 멀어짐
+        runner.wait(5)
+        assert runner.status()['steps'][0]['state'] == 'done'
+        assert fleet.log.recent(1)[0]['action'] == 'lane_change'
+        quick = {'callsigns': CALLSIGNS, 'steps': [{'title': 't', 'actions': [
+            {'robot': 'B', 'do': 'wait_clear', 'distance': 5.0, 'timeout': 0.1}]}]}
+        late = ScenarioRunner(fleet, quick, poll_s=0.01)
+        late.start()
+        late.wait(3)
+        assert late.status()['steps'][0]['state'] == 'failed'
+        assert '기다려도' in late.status()['steps'][0]['note']
+    finally:
+        runner.stop()
+        fleet.close()
+
+
+def test_unpark_leaves_by_open_end():
+    """11번은 위로, 10번은 아래로 나가 1번 트랙에 반시계 방향으로 올라탄다 (서로 반대쪽)."""
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), CONFIG, FakeLink, CALLSIGNS)
+    try:
+        up = fleet.unpark('pinky1', 'slot_11').poses
+        down = fleet.unpark('pinky2', 'slot_10').poses
+        assert up[0]['y'] > 0.3 and up[-1]['y'] > 0.6 and up[-1]['x'] < 0
+        assert down[0]['y'] < -0.3 and down[-1]['y'] < -0.6 and down[-1]['x'] > 0
+        assert math.isclose(math.hypot(up[-1]['x'], up[-1]['y'] - 0.3), 0.405, abs_tol=1e-3)
+    finally:
+        fleet.close()
+
+
+def test_reset_home_puts_robots_back_in_slots():
+    robots = [{'name': 'pinky1', 'domain_id': 11, 'x': 0.0, 'y': 0.15, 'yaw': 1.5708},
+              {'name': 'pinky2', 'domain_id': 12, 'x': 0.0, 'y': -0.15, 'yaw': -1.5708}]
+    fleet = Fleet(robots, ArenaLayout(read_yaml('arena.yaml')), CONFIG, FakeLink, CALLSIGNS)
+    moved = []
+    try:
+        task = fleet.unpark('pinky1', 'slot_11')
+        out = fleet.reset_home(lambda name, pose: moved.append(name) or True)
+        assert task.state == CANCELED                    # 하던 작업은 멈춘다
+        assert moved == ['pinky1', 'pinky2'] and out['sim']
+        assert fleet.links['pinky2'].pose == {'x': 0.0, 'y': -0.15, 'yaw': -1.5708}
+        assert not fleet.reset_home()['sim']             # 실물: 옮기지 않고 위치만 맞춘다
+    finally:
+        fleet.close()
+
+
+def test_usage_counts_distance_and_wheels():
+    u = Usage()
+    for i in range(11):                                  # 0.1 m/s 로 1 초 직진
+        u.on_odom(i * 0.1, 0.1, 0.0)
+    u.on_odom(5.0, 0.1, 0.0)                             # 끊긴 사이는 세지 않는다
+    u.on_battery(7.6)
+    out = u.to_dict(7.5)
+    assert math.isclose(out['distance_m'], 0.1, abs_tol=1e-6)
+    assert out['wheel_rev'][0] == out['wheel_rev'][1] == round(0.1 / (2 * math.pi * 0.028), 1)
+    assert out['battery_used_v'] == 0.1 and out['drive_s'] == 1

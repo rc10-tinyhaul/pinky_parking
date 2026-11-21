@@ -46,6 +46,7 @@
           <ul class="hud-units" id="hud-units" aria-label="유닛 상태"></ul>
           <button class="btn btn-quiet" id="lock" type="button" hidden>잠그기</button>
           <p class="fresh" id="fresh"><span class="fresh-dot" aria-hidden="true"></span><span id="fresh-text">연결 중</span></p>
+          <button class="btn btn-quiet" id="home-all" type="button" title="모든 로봇을 시작 자리(A 11번, B 10번 칸)로 되돌립니다. 시뮬레이션은 로봇도 옮기고, 실물은 손으로 칸에 놓은 뒤 누르면 위치만 맞춥니다">주차 자리로</button>
           <button class="btn btn-stop" id="stop-all" type="button">전체 정지 <kbd class="key key-dark">Esc</kbd></button>
         </div>
       </header>
@@ -92,10 +93,10 @@
         <section class="panel camera" id="camera-panel" aria-labelledby="camera-title" hidden>
           <header class="panel-head">
             <h2 id="camera-title">카메라</h2>
-            <span class="meta" id="camera-meta"></span>
+            <span class="meta">유닛별</span>
             <button class="btn btn-quiet btn-small" id="camera-toggle" type="button" aria-pressed="true">끄기</button>
           </header>
-          <img class="camera-img" id="camera-img" alt="선택한 유닛의 카메라 영상">
+          <div class="camera-grid" id="camera-grid"></div>
         </section>
 
         <!-- 주행 설정 -->
@@ -224,6 +225,7 @@
     </dl>
     <p class="link-line" data-r="link"></p>
     <p class="link-line" data-r="health"></p>
+    <dl class="usage" data-r="usage" aria-label="사용량 (관제 서버를 켠 뒤)"></dl>
   </article>
 </template>
 
