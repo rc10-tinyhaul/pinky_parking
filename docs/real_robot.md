@@ -133,6 +133,7 @@ ros2 launch pinky_parking_control control.launch.py only:=pinky1 cameras:=pinky1
   ```
 
 - **마커**(`pinky_parking_navigation/config/markers.yaml`): 카메라에 보이는 ArUco 마커의 지도 위치입니다. 로봇을 칸에 놓고 마커가 보일 때 관제 화면의 **마커 등록**으로 채웁니다. 지금은 교실의 0번 하나만 있습니다. 인쇄용 마커는 `scripts/make_markers.py`로 만듭니다.
+- **경기장 마커**: 도면의 10·11·20·30번(`pinky_parking_control/config/arena.yaml`의 `markers`)은 `python3 scripts/make_markers.py --ids 10,11,20,30 --size 50 --out <폴더>`로 인쇄해, 그 좌표에 **위쪽 화살표가 도면 위(+y)를 보게** 붙입니다. 시뮬레이션 월드와 같은 방향입니다.
 
 ## 아직 확인하지 않은 것
 

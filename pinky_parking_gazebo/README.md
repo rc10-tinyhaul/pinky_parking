@@ -37,6 +37,22 @@ Gazebo 월드를 띄웁니다.
 
 LiDAR 프레임은 로봇 정면 기준 180° 돌아 있습니다.
 
+## 경기장 월드와 마커
+
+`worlds/arena.world`와 마커 모델 `models/aruco_<번호>`는 `scripts/make_arena_sim.py`가 `pinky_parking_control/config/arena.yaml`에서 만듭니다. 직접 고치지 않습니다. 마커는 바닥에 붙인 ArUco 그림(`DICT_4X4_50`, 검은 정사각형 50 mm)으로 10(두 칸 경계), 11(11번 칸 위 끝), 20(주유구역), 30(대기선)입니다. `world.launch.py`가 `models/`를 `GZ_SIM_RESOURCE_PATH`에 넣습니다.
+
+## 실행 파일
+
+| 명령 | 설명 |
+|---|---|
+| `marker_check [--seconds S] [--save 파일.png]` | 그 도메인의 `/camera/image_raw`(`camera:=true`)를 S초(기본 3) 받아 보이는 마커 번호와 화면 위치를 출력합니다. 못 찾으면 종료 코드 1 |
+
+```bash
+ROS_DOMAIN_ID=11 ros2 run pinky_parking_gazebo marker_check
+```
+
+시뮬레이션 카메라(높이 6.3 cm, 아래로 8°)는 로봇 중심에서 앞으로 약 0.20 ~ 0.40 m에 있는 바닥 마커를 찾습니다. 더 가까우면 화면 아래로 벗어나고, 더 멀면 너무 납작해집니다. 시작 자리의 A는 11번 마커가 너무 가까워(0.15 m) 보이지 않습니다.
+
 ## 월드 추가
 
 `worlds/`에 `.sdf`(또는 `.world`) 파일을 두고 다시 빌드한 뒤, `world_name:=<파일 이름>`으로 실행합니다.

@@ -3,8 +3,9 @@
 경기장 시뮬레이션 만들기: 경기장 도면 좌표(pinky_parking_control/config/arena.yaml)로
 Gazebo 월드와 Nav2 지도를 함께 만든다. 이 저장소의 경기장 월드와 지도는 모두 이 스크립트가 만든다.
 
-  python3 scripts/make_arena_sim.py          # 아래 두 곳에 쓴다 (저장소 루트 기준)
+  python3 scripts/make_arena_sim.py          # 아래에 쓴다 (저장소 루트 기준). OpenCV 가 필요하다
     pinky_parking_gazebo/worlds/arena.world
+    pinky_parking_gazebo/models/aruco_<번호>/                        (마커 모델, 월드가 include)
     pinky_parking_navigation/maps/arena.yaml, arena.pgm
     pinky_parking_navigation/maps/arena_open.yaml, arena_open.pgm   (실물용, 벽 없음)
 
@@ -12,17 +13,22 @@ Gazebo 월드와 Nav2 지도를 함께 만든다. 이 저장소의 경기장 월
 - 라이다로 위치를 잡도록(AMCL) 바닥 바깥 ROOM_MARGIN 만큼 떨어진 곳에 낮은 벽을 두르고,
   방이 돌려도 같아 보이지 않게 직사각형으로 하고 벽마다 크기가 다른 블록을 둔다.
   실물 경기장에는 없는 것이다.
+- ArUco 마커(arena.yaml 의 markers)는 바닥에 붙인 그림이다. 마커마다 모델(그림 PNG 포함)을 만들어
+  월드가 model://aruco_<번호> 로 부른다. 모델 경로는 world.launch.py 가 GZ_SIM_RESOURCE_PATH 에 넣는다.
 - 지도는 월드 원점에서 만든 것과 같다 (지도 좌표 = 월드 좌표 = 도면 좌표).
 """
 import argparse
 import math
 from pathlib import Path
 
+import cv2
+from make_markers import marker_image
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 ARENA_YAML = ROOT / 'pinky_parking_control/config/arena.yaml'
 WORLD_OUT = ROOT / 'pinky_parking_gazebo/worlds/arena.world'
+MODELS_OUT = ROOT / 'pinky_parking_gazebo/models'
 MAP_OUT = ROOT / 'pinky_parking_navigation/maps/arena'
 
 # 바닥 가장자리에서 벽 안쪽 면까지 [m] (왼쪽, 오른쪽, 아래, 위). 정사각형이면 90° 돌린 모습과
@@ -39,6 +45,9 @@ BLOCKS = [             # (x, y, 가로, 세로) 벽에 붙인 크기가 서로 �
 MAP_RESOLUTION = 0.02
 ARC_SEGMENTS = 24      # 반원 하나를 몇 조각 직선으로 그릴지
 Z = 0.0005             # 바닥 위 그림 높이 (겹침 깜빡임 방지)
+MARKER_PX = 60         # 마커 그림의 칸 하나 [px] (4x4 마커 = 검은 테두리 포함 6 칸)
+MARKER_QUIET = 1       # 둘레 흰 여백 [칸]. 여백이 없으면 바닥과 구별이 안 돼 검출되지 않는다
+MARKER_Z = 0.004       # 마커 높이 [m]. 테이프 윗면(2 mm)과 같으면 멀리서 바닥에 가려 보이지 않는다
 
 COLORS = {
     'board': (0.86, 0.86, 0.86), 'asphalt': (0.62, 0.62, 0.62), 'tape': (0.03, 0.03, 0.03),
@@ -163,7 +172,7 @@ def make_world(arena):
     return f"""<?xml version="1.0"?>
 <!-- scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 에서 만든 경기장. -->
 <!-- 직접 고치지 않는다. -->
-<!-- 테이프·칸은 그림만 있다. 벽과 블록은 라이다 위치 추정용으로, 실물 경기장에는 없다. -->
+<!-- 테이프·칸·마커는 그림만 있다. 벽과 블록은 라이다 위치 추정용으로, 실물 경기장에는 없다. -->
 <sdf version="1.8">
   <world name="arena">
     <physics name="1ms" type="ignored">
@@ -210,9 +219,96 @@ def make_world(arena):
       </link>
     </model>
 {nl.join(solids)}
+{nl.join(marker_includes(arena.get('markers') or {}))}
   </world>
 </sdf>
 """
+
+
+def marker_cells(dictionary):
+    """마커 한 변의 칸 수 (검은 테두리 포함). DICT_4X4_50 이면 6."""
+    return int(dictionary.split('_')[1].split('X')[0]) + 2
+
+
+def marker_png(dictionary, marker_id):
+    """흰 여백을 두른 마커 그림 (PNG 바이트)."""
+    cells = marker_cells(dictionary)
+    image = marker_image(dictionary, marker_id, cells * MARKER_PX)
+    pad = MARKER_QUIET * MARKER_PX
+    image = cv2.copyMakeBorder(image, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+    ok, data = cv2.imencode('.png', image)
+    if not ok:
+        raise RuntimeError(f'마커 {marker_id} 그림을 만들지 못했습니다')
+    return data.tobytes()
+
+
+def marker_plate(markers):
+    """흰 여백까지 포함한 마커 판 한 변 [m]."""
+    cells = marker_cells(markers['dictionary'])
+    return markers['size'] * (cells + 2 * MARKER_QUIET) / cells
+
+
+def marker_model(markers, marker_id):
+    """마커 모델 (model.config, model.sdf 텍스트). 그림은 판 윗면에만 보인다 (충돌 없음)."""
+    name = f'aruco_{marker_id}'
+    side = marker_plate(markers)
+    config = f"""<?xml version="1.0"?>
+<model>
+  <name>{name}</name>
+  <version>1.0</version>
+  <sdf version="1.8">model.sdf</sdf>
+  <description>ArUco {markers['dictionary']} {marker_id}, 검은 정사각형 {markers['size'] * 1000:g} mm
+    (scripts/make_arena_sim.py 가 만듦)</description>
+</model>
+"""
+    sdf = f"""<?xml version="1.0"?>
+<!-- scripts/make_arena_sim.py 가 만든 바닥 마커. 직접 고치지 않는다. -->
+<sdf version="1.8">
+  <model name="{name}">
+    <static>true</static>
+    <link name="link">
+      <visual name="visual">
+        <geometry><plane><normal>0 0 1</normal><size>{side:.4f} {side:.4f}</size></plane></geometry>
+        <material>
+          <ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal>
+            <albedo_map>model://{name}/materials/textures/{name}.png</albedo_map>
+            <metalness>0</metalness><roughness>1</roughness>
+          </metal></pbr>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
+"""
+    return config, sdf
+
+
+def write_marker_models(markers, out_dir):
+    """마커마다 모델 폴더를 만든다. 만든 번호 목록을 돌려준다."""
+    out_dir = Path(out_dir)
+    ids = sorted(markers['items'])
+    for marker_id in ids:
+        folder = out_dir / f'aruco_{marker_id}'
+        textures = folder / 'materials/textures'
+        textures.mkdir(parents=True, exist_ok=True)
+        config, sdf = marker_model(markers, marker_id)
+        (folder / 'model.config').write_text(config, encoding='utf-8')
+        (folder / 'model.sdf').write_text(sdf, encoding='utf-8')
+        (textures / f'aruco_{marker_id}.png').write_bytes(marker_png(markers['dictionary'], marker_id))
+    return ids
+
+
+def marker_includes(markers):
+    """월드에 넣을 마커 include (테이프보다 위, MARKER_Z)."""
+    out = []
+    for marker_id, m in sorted(markers.get('items', {}).items()):
+        out.append(f"""    <include>
+      <uri>model://aruco_{marker_id}</uri>
+      <name>aruco_{marker_id}</name>
+      <pose>{m['x']:.4f} {m['y']:.4f} {MARKER_Z} 0 0 {m.get('yaw', 0.0):.4f}</pose>
+    </include>""")
+    return out
 
 
 def make_map(arena, walls=True):
@@ -260,11 +356,15 @@ def main():
     parser.add_argument('--arena', default=str(ARENA_YAML))
     parser.add_argument('--world', default=str(WORLD_OUT))
     parser.add_argument('--map', default=str(MAP_OUT), help='확장자 없이 (yaml, pgm 을 쓴다)')
+    parser.add_argument('--models', default=str(MODELS_OUT), help='마커 모델 폴더')
     args = parser.parse_args()
     arena = yaml.safe_load(Path(args.arena).read_text(encoding='utf-8'))
     for path in (Path(args.world), Path(args.map)):
         path.parent.mkdir(parents=True, exist_ok=True)
     Path(args.world).write_text(make_world(arena), encoding='utf-8')
+    if arena.get('markers'):
+        ids = write_marker_models(arena['markers'], args.models)
+        print(f'마커 모델: {args.models}/aruco_{{{",".join(map(str, ids))}}}')
     for walls, path in ((True, args.map), (False, args.map + '_open')):
         meta, pgm = make_map(arena, walls)
         Path(path + '.yaml').write_text(meta, encoding='utf-8')

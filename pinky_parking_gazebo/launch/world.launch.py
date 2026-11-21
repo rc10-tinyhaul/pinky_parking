@@ -36,9 +36,9 @@ def setup(context):
     headless = LaunchConfiguration('headless').perform(context).lower() == 'true'
     server_args = f'-r -s -v3 {"--headless-rendering " if headless else ""}{world}'
 
-    # 공식 launch_sim.launch.xml 과 같은 모델 경로
+    # 이 패키지의 모델(경기장 마커) + 공식 launch_sim.launch.xml 과 같은 모델 경로
     resource_path = ':'.join([
-        str(description_share.parent), str(gz_share / 'models'),
+        str(share / 'models'), str(description_share.parent), str(gz_share / 'models'),
         str(Path.home() / '.gazebo/models')])
     return [
         SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', resource_path),
