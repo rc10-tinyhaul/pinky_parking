@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-임시 경기장 시뮬레이션 만들기: 경기장 도면 좌표(pinky_parking_control/config/arena.yaml)로
-Gazebo 월드와 Nav2 지도를 함께 만든다. 경기장 월드(#1)와 지도(#3)가 생기기 전까지 쓰는 임시 파일이다.
+경기장 시뮬레이션 만들기: 경기장 도면 좌표(pinky_parking_control/config/arena.yaml)로
+Gazebo 월드와 Nav2 지도를 함께 만든다. 이 저장소의 경기장 월드와 지도는 모두 이 스크립트가 만든다.
 
   python3 scripts/make_arena_sim.py          # 아래 두 곳에 쓴다 (저장소 루트 기준)
     pinky_parking_gazebo/worlds/arena.world
@@ -161,7 +161,7 @@ def make_world(arena):
     fr, fg, fb = COLORS['floor']
     nl = '\n'
     return f"""<?xml version="1.0"?>
-<!-- scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 에서 만든 임시 경기장. -->
+<!-- scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 에서 만든 경기장. -->
 <!-- 직접 고치지 않는다. -->
 <!-- 테이프·칸은 그림만 있다. 벽과 블록은 라이다 위치 추정용으로, 실물 경기장에는 없다. -->
 <sdf version="1.8">
@@ -246,7 +246,7 @@ def make_map(arena, walls=True):
                 pixels.append(205)
     pgm = f'P5\n{width} {height}\n255\n'.encode() + bytes(pixels)
     name = 'arena' if walls else 'arena_open'
-    what = '임시 경기장 지도 (월드 arena.world 와 같은 좌표)' if walls else \
+    what = '경기장 지도 (월드 arena.world 와 같은 좌표)' if walls else \
         '실물용 벽 없는 경기장 바닥 (도면 좌표, odom 위치 추정과 함께)'
     meta = (f'# scripts/make_arena_sim.py 가 만든 {what}.\n'
             f'image: {name}.pgm\nmode: trinary\nresolution: {res}\n'

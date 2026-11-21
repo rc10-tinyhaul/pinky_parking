@@ -22,8 +22,13 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
       안쪽으로 파고들고, 0.4 m 짜리 짧은 이동은 처음부터 끝까지 감속 구간이 된다.
     - footprint ([[x, y], ...]): 주면 local·global costmap 의 footprint 를 바꾼다(트레일러 차량).
       None 이면 공식 값을 그대로 둔다.
+    - 경유점 주행(follow_waypoints)은 경유점 하나라도 실패하면 멈춘다(stop_on_failure). 공식 값은
+      실패한 경유점을 건너뛰고 다음으로 가서, 주차 칸 입구에 못 가면 트랙과 옆 칸을 가로질러 칸
+      가운데로 곧장 갔다.
     """
     params = copy.deepcopy(base_params)
+    follower = params.setdefault('waypoint_follower', {}).setdefault('ros__parameters', {})
+    follower['stop_on_failure'] = True
     amcl = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
     amcl['set_initial_pose'] = True
     amcl['initial_pose'] = {'x': x, 'y': y, 'z': 0.0, 'yaw': yaw}

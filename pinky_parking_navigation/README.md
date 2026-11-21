@@ -11,7 +11,7 @@
 | `domain_id` | (필수) | 이 로봇의 `ROS_DOMAIN_ID` |
 | `x`, `y`, `yaw` | `0.0` | AMCL 초기 위치 [m], 방향 [rad] |
 | `vehicle` | `T00` | 차종(`pinky_parking_description`). 트레일러 차종이면 footprint를 트레일러 끝까지 늘립니다 |
-| `map` | `maps/factory.yaml` | 지도 YAML |
+| `map` | `maps/arena.yaml` | 지도 YAML. 경기장 지도는 `scripts/make_arena_sim.py`가 만듭니다(실물용 벽 없는 지도는 `arena_open.yaml`) |
 | `params_file` | `pinky_navigation/params/nav2_params.yaml` | 기준 Nav2 파라미터 |
 | `use_sim_time` | `true` | 시뮬레이션 시계(`/clock`). **실물 로봇은 `false`** |
 | `max_speed` | (공식 값 0.25) | 직진 속도 상한 [m/s]. 컨트롤러 목표 속도와 속도 평활기 최대 속도를 함께 낮춥니다. 실물 첫 시험은 `0.1` 이하로 |
@@ -20,11 +20,12 @@ AMCL 초기 위치, `lifecycle_nodes_nav`(`smoother_server` 추가), 트레일�
 
 ## 지도 만들기
 
-한 대만 띄워 만듭니다(두 대면 다른 로봇이 벽처럼 지도에 남습니다). 작업공간 루트에서 실행합니다.
+경기장 지도는 `scripts/make_arena_sim.py`가 월드와 함께 만듭니다. 다른 월드의 지도를 SLAM으로 만들 때는 한 대만 띄워 만듭니다(두 대면 다른 로봇이 벽처럼 지도에 남습니다). 작업공간 루트에서 실행합니다.
 
 ```bash
 ros2 launch pinky_parking_bringup sim.launch.py nav:=false \
-  robots:=$(ros2 pkg prefix pinky_parking_bringup)/share/pinky_parking_bringup/config/pinky1_only.yaml
+  robots:=$(ros2 pkg prefix pinky_parking_bringup)/share/pinky_parking_bringup/config/pinky1_only.yaml \
+  world_name:=<월드 파일>          # 비우면 arena.world
 ROS_DOMAIN_ID=11 ros2 launch pinky_navigation gz_map_building.launch.xml
 ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup auto_explore 240
 ROS_DOMAIN_ID=11 ros2 run nav2_map_server map_saver_cli -f src/pinky_parking/pinky_parking_navigation/maps/my_map

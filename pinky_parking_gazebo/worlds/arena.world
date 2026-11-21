@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 에서 만든 임시 경기장. -->
+<!-- scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 에서 만든 경기장. -->
 <!-- 직접 고치지 않는다. -->
 <!-- 테이프·칸은 그림만 있다. 벽과 블록은 라이다 위치 추정용으로, 실물 경기장에는 없다. -->
 <sdf version="1.8">

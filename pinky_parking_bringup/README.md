@@ -10,7 +10,7 @@
 |---|---|---|
 | `robots` | `config/robots.yaml` | 로봇 목록 |
 | `world_name` | `robots.yaml`의 `world_name` | 월드 파일 이름 |
-| `map` | `pinky_parking_navigation/maps/factory.yaml` | 지도 |
+| `map` | `pinky_parking_navigation/maps/arena.yaml` | 지도 |
 | `gui` | `true` | Gazebo 창 |
 | `headless` | `false` | 화면 없는 환경용 |
 | `camera` | `true` | 카메라 영상 브리지 |
@@ -20,17 +20,19 @@
 ## 로봇 목록 (`config/robots.yaml`)
 
 ```yaml
-world_name: pinky_factory.world
+world_name: arena.world
 robots:
-  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: T00}
-  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: T00}
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.15, yaw: 1.5708, vehicle: T00}     # slot_11
+  - {name: pinky2, domain_id: 12, x: 0.0, y: -0.20, yaw: -1.5708, vehicle: T00}   # slot_10
 ```
+
+시연은 주차된 상태에서 시작합니다. A(pinky1)는 11번 칸에서 위쪽, B(pinky2)는 10번 칸에서 아래쪽을 봅니다. B는 트레일러가 칸 안에 들도록 칸 중심보다 5 cm 아래에 섭니다.
 
 | 필드 | 설명 |
 |---|---|
 | `name` | 로봇 이름 |
 | `domain_id` | 이 로봇의 `ROS_DOMAIN_ID` |
-| `x`, `y` [m], `yaw` [rad] | 스폰 위치이자 AMCL 초기 위치 |
+| `x`, `y` [m], `yaw` [rad] | 경기장 도면 좌표. 스폰 위치이자 AMCL 초기 위치 |
 | `vehicle` | 차종(`pinky_parking_description`의 `config/vehicles.yaml`). 없으면 `T00` |
 
 `config/pinky1_only.yaml`은 지도 작성용(pinky1 한 대)입니다.

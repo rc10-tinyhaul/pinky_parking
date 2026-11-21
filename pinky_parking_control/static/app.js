@@ -11,8 +11,8 @@
   const $ = (sel, el = document) => el.querySelector(sel);
   const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
   const G = window.ArenaGeo;
-  const ACTION = { goto: '이동', park: '주차', unpark: '출차', lap: '경로 주행', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유', reference: '기준 경로' };
-  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', lap: '주행 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중', reference: '따라가는 중' };
+  const ACTION = { goto: '이동', park: '주차', unpark: '출차', drive: '트랙 주행', lane_change: '차선 변경', fuel: '주유', reference: '기준 경로' };
+  const RUNNING = { goto: '이동 중', park: '주차 중', unpark: '출차 중', drive: '주행 중', lane_change: '차선 변경 중', fuel: '주유 이동 중', reference: '따라가는 중' };
   const RESULT = { running: '진행 중', succeeded: '완료', failed: '실패', canceled: '취소됨' };
   const STEP_MARK = { running: '▸', done: '✓', skipped: '–', failed: '✕', stopped: '■' };
   const TRAIL_POINTS = 1200;   // 자취를 길게 남긴다 (계획 경로와 겹쳐 보며 보정). '자취 지우기'로 비운다
@@ -205,7 +205,7 @@
 
   // ---- 위 HUD -----------------------------------------------------------------
   function taskRest(t) {
-    if (t.mode !== 'path' && (t.action === 'drive' || t.action === 'lap' || t.waypoint_total > 1)) {
+    if (t.mode !== 'path' && (t.action === 'drive' || t.waypoint_total > 1)) {
       return `경유점 ${Math.min(t.waypoint_index + 1, t.waypoint_total)}/${t.waypoint_total}`;
     }
     return t.distance_remaining == null ? '출발 중' : `${fixed(t.distance_remaining)} m 남음`;
@@ -923,35 +923,6 @@
     }
   }
 
-  function drawFactory() {
-    const m = state.map;
-    if (m) {
-      const cs = m.resolution * view.s;
-      const colors = { f: css('--map-free'), o: css('--map-wall') };
-      for (let row = 0; row < m.height; row += 1) {
-        for (let col = 0; col < m.width; col += 1) {
-          const k = m.cells[row * m.width + col];
-          if (k === 'u') continue;
-          ctx.fillStyle = colors[k];
-          ctx.fillRect(view.ox + col * cs, view.oy + row * cs, Math.ceil(cs), Math.ceil(cs));
-        }
-      }
-    }
-    ctx.setLineDash([4, 5]); ctx.strokeStyle = css('--control');
-    for (const pts of Object.values(state.layout.routes || {})) {
-      ctx.beginPath();
-      pts.forEach((p, i) => { const [px, py] = toPx(p.x, p.y); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    for (const [name, s] of Object.entries(state.layout.slots)) {
-      zoneRect({ ...s, yaw: s.yaw }, 0.24, 0.2, css('--zone-park'), css('--zone-park'));
-      const [px, py] = toPx(s.x, s.y);
-      ctx.fillStyle = css('--zone-park'); ctx.font = `500 11px ${css('--mono')}`; ctx.textAlign = 'center';
-      ctx.fillText(name, px, py - 0.1 * view.s - 6);
-    }
-  }
-
   function drawVehicle(r) {
     const v = r.vehicle || { length: 0.14, width: 0.13, trailer: 0 };
     const [px, py] = toPx(r.pose.x, r.pose.y);
@@ -993,7 +964,7 @@
     if (!view || $('#view-board').hidden) return;
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (isArena()) drawArena(); else drawFactory();
+    if (isArena()) drawArena();
     drawSensors();
     drawReference();
     // 자취와 남은 경로
@@ -1209,14 +1180,14 @@
 
   Promise.all([api('GET', '/api/layout').catch(() => null), api('GET', '/api/map').catch(() => null), api('GET', '/api/auth').catch(() => ({ required: false }))])
     .then(([layout, map, auth]) => {
-      state.layout = layout || { kind: 'factory', name: '배치를 받지 못함', slots: {}, routes: {}, vehicles: {} };
+      state.layout = layout || { kind: 'none', name: '배치를 받지 못함', slots: {}, routes: {}, vehicles: {} };
       state.map = map;
       state.auth.required = Boolean(auth && auth.required);
       if (layout && layout.teleop) Object.assign(TELEOP, layout.teleop);
       $('#show-room-label').hidden = !(isArena() && map);
-      $('#layout-chip').textContent = isArena() ? '경기장' : '공장 월드';
-      $('#field-title').textContent = isArena() ? '경기장' : '공장 월드';
-      $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '시뮬레이션 임시 배치 · 경기장 월드(#1) 전까지';
+      $('#layout-chip').textContent = isArena() ? '경기장' : '배치 없음';
+      $('#field-title').textContent = isArena() ? '경기장' : '배치를 받지 못함';
+      $('#field-meta').textContent = isArena() ? '2000 × 2000 mm · 반시계 주행 · 원점 = 트랙 중심' : '관제 서버에서 배치를 받지 못했습니다';
       if (document.fonts) document.fonts.ready.then(() => { layoutField(); drawField(); });
       layoutField();
       route();

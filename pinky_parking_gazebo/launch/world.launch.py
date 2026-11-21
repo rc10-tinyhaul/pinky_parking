@@ -55,7 +55,7 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
-            'world_name', default_value='pinky_factory.world', description='월드 파일 이름'),
+            'world_name', default_value='arena.world', description='월드 파일 이름'),
         DeclareLaunchArgument('gui', default_value='true', description='Gazebo 창'),
         DeclareLaunchArgument(
             'headless', default_value='false',

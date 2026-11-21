@@ -1,4 +1,4 @@
-# 지도 만들기용: pinky1 한 대만 원점에 띄운다 (README.md의 "지도 만들기")
-world_name: pinky_factory.world
+# 지도 만들기용: pinky1 한 대만 11번 칸에 띄운다 (pinky_parking_navigation/README.md 의 "지도 만들기")
+world_name: arena.world
 robots:
-  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0}
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.15, yaw: 1.5708}

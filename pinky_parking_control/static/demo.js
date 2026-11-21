@@ -1,7 +1,6 @@
 /*
   모의 로봇: 관제센터를 서버 없이 확인할 때만 쓴다 (주소 끝에 ?demo).
     ?demo          경기장 도면 (config/arena.yaml, scenario.yaml 을 옮긴 값)
-    ?demo=factory  지금 시뮬레이션용 공장 월드
     ?demo=lock     경기장 + 팀 비밀번호 'demo'
   실제 API 와 같은 모양으로 답한다. 로봇은 장애물을 무시하고 경유점을 따라 0.18 m/s 로 간다.
 */
@@ -39,23 +38,15 @@ window.PinkyDemo = (() => {
     },
     vehicles: VEHICLES, pending: PENDING, callsigns: CALLSIGNS, teleop: { linear: 0.15, angular: 1.2 },
   };
-  const FACTORY = {
-    kind: 'factory', name: '공장 월드 (시뮬레이션 임시)',
-    slots: { slot_10: { x: 0.3, y: -1.1, yaw: 0 }, slot_11: { x: -0.8, y: 1.15, yaw: 3.14159 } },
-    routes: { lap: [{ x: -0.8, y: 1.15, yaw: 3.14159 }, { x: 0.3, y: -1.0, yaw: -1.5708 }, { x: 0.5, y: 1.0, yaw: 3.14159 }] },
-    exits: { slot_10: { x: 0, y: 0, yaw: 0 }, slot_11: { x: 0.5, y: 1.0, yaw: 3.14159 } },
-    vehicles: VEHICLES, pending: PENDING, callsigns: CALLSIGNS, teleop: { linear: 0.15, angular: 1.2 },
-  };
-  const MAP = {"width":82,"height":63,"resolution":0.05,"origin":{"x":-2.033,"y":-1.576},"cells":"uooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooouuuuouooofffffffffooofooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouoofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouoofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouoofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffooooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouooffffffofoffffofffffooffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouoooofoooofoooooooofooooooooooofffffffffffffffffffoooffooooooooooooffoooooofoooooouuuoffuuoooofoooooffoooofouoooofffffffffffffffffffoooffooooooooooooffooooooooooooouuoofuuufoououfouofooofoooooooofffffffffffffffffffoooffooofooooooooffouuooufufouoouuuouuuufouuoufoooooooouoouofoofffffffffffffffffffoooooooooooffooooooouooouffoouoouuuuuuuuuuuufuouuouuooouuuoouoofffffffffffffffffffooooooofoooffoooooooofoooofoououuuooouufuuuufuuuuouooooouuuuuoofffffffffffffffffffoooooooooooffooooooooooooffooooouoffffffuuuufuuuuuuuuuffffuouoofffffffffffffffffffffffffffffffffffffffffffffffffoouoffffffffffuuuuuuuuuuuuuuooooofffffffffffffffffffffffffffffffffffffffffffffffffoouoffffffuuuffffuuuuuuuuuuuoofoofffffffffffffffffffffffffffffffffffffffffffffffffoououuuffffffffffffffffuuuuuooooofffffffffffffffffffffffffffffffffffffffffffffffffoouofuuffuuuuffuffffffffffffoofoofffffffffffffffffffffffffffffffffffffffffffffffffoououffffufffffuufuuuuufffufffoooffffffffffffffffffffffffffffffffffffffffffooooffuouoooffffffffffffffffffffffffffooffffffffffffffffffffffffffffffffffffffffffoouuuuuuuuofffffffffffffffffffffffffofooffffffffffffffffffffffffffffffffffffffffffoouuuuuoouuufuuuuuuufuuufuuuuuuuuuuuouooffffffffffffffffffffffffffffffffffffffffffoooffffoouuufuuuuuuufuuufufuuuuuuuuuoooofffffffffffffffffffffffffffffffffffffffffffffffffoouuuuuuuuuuufuuufuuuuuuuuuuooooofffffffffffffffffffffffffffffffffffffffffffffffffoouuuuuuuuuuffuuufffuuffuuuuuoffffffffffffffffffffffffffffffffffffffffffffffffffffoououuuuuuuuffuuufuuuuuuffufoofoofffffffffffffffffffffffffffffffffffffffffffffffffoououuuuuuuufuuuufuuuffffffoooooofffffffffffffffffffffffffffffffffffffffffffffffffoououuuuuuuufffuuffffffufffooouoofffffffffffffffffffffffffffffffffffffffffffffffffoouoofufffufffffffuuuuuuuuuuofooooffffffffffffffffffffffffffffffffffffffffffffffffoouoofffffffffuuuuufuuuuuuuuuoooofffffffffffffffffffffffffffffffffffffffffffffffffoouoffffffuufuuuuffuuuuuuuuuooooofffffffffffffffffffffffffffffffffffffffffffffffffoouooffuuffffffffuuuuuuuuuuuuoooofffffffffffffffffffoooffooooooooooooffooooooooooooouoofffffffffffuufuuuuuuuuuuoooofffffffffffffffffffooofoooofoooooooofooooooooooooooooofffffffffffffffffuuuuufffuoofffffffffffffffffffoofffooofofooooffffoouuuouuuouoouofffffffffffffffffffffffffffoofffffffffffffffffffoooooooooouffoouuuooouuouuufouuuuoofffffffffffffffffffffuuuuuoofffffffffffffffffffoooooooooooofoooooooooooooffoooouoofffffffffffffffffffffffooooofffffffffffffffffffooooooooooooffooofffofoofffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouoffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoouuoffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouooffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffouoofffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffoffouoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooofoouoofuououoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooouououuuouuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuouuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"};
-  const LAYOUT = mode === 'factory' ? FACTORY : ARENA;
-  const TIMEOUT = { goto: 180, park: 180, unpark: 180, lap: 300, drive: 300, lane_change: 120, fuel: 180 };
+  const LAYOUT = ARENA;
+  const TIMEOUT = { goto: 180, park: 180, unpark: 180, drive: 300, lane_change: 120, fuel: 180 };
   const FUEL_WORDS = { wait: '대기선 30', enter: '주유구역 20', leave: '2번 트랙 복귀' };
   const SPEED = 0.18;
   const now = () => Date.now() / 1000;
   let nextId = 7;
 
   const start = LAYOUT.kind === 'arena'
-    ? { pinky1: { x: 0, y: 0.15, yaw: PI2 }, pinky2: { x: 0, y: -0.15, yaw: PI2 } }
+    ? { pinky1: { x: 0, y: 0.15, yaw: PI2 }, pinky2: { x: 0, y: -0.20, yaw: -PI2 } }
     : { pinky1: { x: 0, y: 0, yaw: 0 }, pinky2: { x: 0.5, y: 1.0, yaw: 3.14159 } };
   const robots = {
     pinky1: { name: 'pinky1', domain_id: 11, callsign: 'A', vehicle: 'T00', pose: { ...start.pinky1 }, v: 0, w: 0, task: null, teleop: 0 },
@@ -147,17 +138,14 @@ window.PinkyDemo = (() => {
     return r.task;
   }
 
-  function arenaOnly() { if (LAYOUT.kind !== 'arena') throw err(400, '경기장 배치에서만 됩니다 (지금은 공장 월드)'); }
-
   function command(r, act, body) {
     switch (act) {
       case 'goto': { const p = { x: +body.x, y: +body.y, yaw: +body.yaw || 0 }; return startTask(r, 'goto', `(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`, [p]); }
       case 'park': if (!LAYOUT.slots[body.slot]) throw err(404, `없는 주차 칸입니다: ${body.slot}`); return startTask(r, 'park', body.slot, [LAYOUT.slots[body.slot]]);
       case 'unpark': if (!LAYOUT.exits[body.slot]) throw err(404, `없는 출차 위치입니다: ${body.slot}`); return startTask(r, 'unpark', body.slot, [LAYOUT.exits[body.slot]]);
-      case 'lap': if (!(LAYOUT.routes || {})[body.route]) throw err(404, `없는 경로입니다: ${body.route}`); return startTask(r, 'lap', body.route, LAYOUT.routes[body.route]);
-      case 'drive': arenaOnly(); return startTask(r, 'drive', `${body.track}번 트랙`, G.drive(LAYOUT, Number(body.track), r.pose, body.laps || 1));
-      case 'lane_change': arenaOnly(); return startTask(r, 'lane_change', `${body.to}번 트랙으로`, G.laneChange(LAYOUT, Number(body.to), r.pose));
-      case 'fuel': arenaOnly(); if (!FUEL_WORDS[body.step]) throw err(422, `주유 단계는 wait, enter, leave 중 하나입니다: ${body.step}`); return startTask(r, 'fuel', FUEL_WORDS[body.step], [LAYOUT.fuel[body.step]]);
+      case 'drive': return startTask(r, 'drive', `${body.track}번 트랙`, G.drive(LAYOUT, Number(body.track), r.pose, body.laps || 1));
+      case 'lane_change': return startTask(r, 'lane_change', `${body.to}번 트랙으로`, G.laneChange(LAYOUT, Number(body.to), r.pose));
+      case 'fuel': if (!FUEL_WORDS[body.step]) throw err(422, `주유 단계는 wait, enter, leave 중 하나입니다: ${body.step}`); return startTask(r, 'fuel', FUEL_WORDS[body.step], [LAYOUT.fuel[body.step]]);
       default: throw err(404, '없는 행동입니다');
     }
   }
@@ -253,13 +241,13 @@ window.PinkyDemo = (() => {
     return snap;
   }
 
-  const MOVES = ['goto', 'park', 'unpark', 'lap', 'drive', 'lane_change', 'fuel', 'teleop', 'vehicle', 'gap', 'precise'];
+  const MOVES = ['goto', 'park', 'unpark', 'drive', 'lane_change', 'fuel', 'teleop', 'vehicle', 'gap', 'precise'];
 
   async function api(method, path, body = {}, password = '') {
     body = body || {};
     if (method === 'GET' && path === '/api/auth') return { required: Boolean(PASSWORD) };
     if (method === 'GET' && path === '/api/layout') return LAYOUT;
-    if (method === 'GET' && path === '/api/map') { if (LAYOUT.kind === 'arena') throw err(404, '경기장은 도면으로 그립니다'); return MAP; }
+    if (method === 'GET' && path === '/api/map') throw err(404, '경기장은 도면으로 그립니다');
     const scenarioMove = path.startsWith('/api/scenario/') && !path.endsWith('/stop');
     const moving = path === '/api/auth/check' || scenarioMove || MOVES.some((m) => path.endsWith(`/${m}`));
     if ((method === 'POST' || method === 'PUT') && moving && PASSWORD && password !== PASSWORD) throw err(401, '팀 비밀번호가 틀렸거나 없습니다');

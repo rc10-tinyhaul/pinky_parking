@@ -1,9 +1,16 @@
-# 시뮬레이션에 띄울 로봇 목록. 대수·도메인·위치는 여기서만 바꾼다.
+# 로봇 목록. 대수·도메인·위치는 여기서만 바꾼다.
+# 경기장 월드 arena.world(scripts/make_arena_sim.py 가 pinky_parking_control/config/arena.yaml 로 만듦)와
+# 지도 maps/arena.yaml 을 쓴다.
 # domain_id: 로봇마다 다른 ROS_DOMAIN_ID (실물 운용과 같은 구조)
-# x, y [m], yaw [rad]: Gazebo 월드 좌표이자 AMCL 초기 위치.
-# vehicle: 차종 (pinky_parking_description/config/vehicles.yaml). T00, T10, T15
-#   지도를 월드 원점 (0,0), yaw 0 에서 시작해 만들면 지도 좌표 = 월드 좌표가 된다.
-world_name: pinky_factory.world
+# x, y [m], yaw [rad]: 경기장 도면 좌표(원점 = 트랙 중심)이자 Gazebo 스폰·AMCL 초기 위치.
+#   시연은 주차된 상태에서 시작한다. 관제센터의 '주차 자리로' 버튼도 이 자리로 되돌린다.
+#   A(pinky1) = 11번 칸, 위쪽을 보고 서서 위로 출차한다.
+#   B(pinky2) = 10번 칸, 아래쪽을 보고 서서 아래로 출차한다. 칸 안에서 돌지 않으므로 트레일러를 달아도 된다.
+#   B 는 뒤(위쪽)에 다는 트레일러 10 cm 가 칸 안에 들도록 칸 중심(y = -0.15)보다 5 cm 아래에 선다.
+#   시작 자세는 dataset/xyz 의 coords_robot_a/b.csv 와 같다.
+# vehicle: 차종 (pinky_parking_description/config/vehicles.yaml). T00, T10, T15. Nav2 footprint 와 Gazebo 모델이 따른다.
+#   실물 트레일러가 아직 없어 둘 다 T00 이다. B 에 트레일러를 달면 T10 으로 바꾼다.
+world_name: arena.world
 robots:
-  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.0, yaw: 0.0, vehicle: T00}
-  - {name: pinky2, domain_id: 12, x: 0.5, y: 1.0, yaw: 3.14159, vehicle: T00}
+  - {name: pinky1, domain_id: 11, x: 0.0, y: 0.15, yaw: 1.5708, vehicle: T00}     # slot_11
+  - {name: pinky2, domain_id: 12, x: 0.0, y: -0.20, yaw: -1.5708, vehicle: T00}   # slot_10

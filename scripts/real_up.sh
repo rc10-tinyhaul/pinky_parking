@@ -23,7 +23,7 @@ PEERS=$(IFS=';'; echo "${IPS[*]}")
 WS=/ws/src/pinky_parking
 MAP=${MAP:-$WS/pinky_parking_navigation/maps/room.yaml}
 REFERENCE_DIR=${REFERENCE_DIR:-logs/reference}
-ROBOTS_YAML=pinky_parking_bringup/config/robots_arena.yaml
+ROBOTS_YAML=pinky_parking_bringup/config/robots.yaml
 say() { printf '\n== %s\n' "$*"; }
 
 say "1. 로봇이 와이파이에 있는지"
@@ -72,7 +72,7 @@ docker compose exec -d -e ROS_STATIC_PEERS="$PEERS" sim bash -c "source /opt/ros
 echo "  로그: logs/run/nav.log"
 
 say "5. 관제 서버"
-docker compose exec -d sim bash -c "source /opt/ros/jazzy/setup.bash && source install/setup.bash && exec ros2 launch pinky_parking_control control.launch.py only:=$ONLY log_dir:=$WS/logs cameras:=$STREAMS ${REFERENCES:+references:=$REFERENCES} room_map:=$MAP robots:=/ws/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml > $WS/logs/run/control.log 2>&1"
+docker compose exec -d sim bash -c "source /opt/ros/jazzy/setup.bash && source install/setup.bash && exec ros2 launch pinky_parking_control control.launch.py only:=$ONLY log_dir:=$WS/logs cameras:=$STREAMS ${REFERENCES:+references:=$REFERENCES} room_map:=$MAP robots:=/ws/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots.yaml > $WS/logs/run/control.log 2>&1"
 echo "  로그: logs/run/control.log"
 
 say "6. 준비 기다리기 (최대 90초)"

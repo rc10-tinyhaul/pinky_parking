@@ -6,8 +6,6 @@ import time
 from pinky_parking_control.fleet import Fleet
 from pinky_parking_control.fleet import UnknownName
 from pinky_parking_control.layout import ArenaLayout
-from pinky_parking_control.layout import choose_layout
-from pinky_parking_control.layout import FactoryLayout
 from pinky_parking_control.layout import NotInLayout
 from pinky_parking_control.layout import Stadium
 from pinky_parking_control.mapdata import classify
@@ -30,8 +28,6 @@ import yaml
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / 'config'
 ROBOTS = [{'name': 'pinky1', 'domain_id': 11}, {'name': 'pinky2', 'domain_id': 12}]
-SLOTS = {'slot_10': {'x': 0.3, 'y': -1.1, 'yaw': 0.0}}
-ROUTES = {'lap': [{'x': -0.8, 'y': 1.15, 'yaw': 3.14159}, {'x': 0.5, 'y': 1.0, 'yaw': 0.0}]}
 CONFIG = {'timeout_s': {'goto': 5}, 'vehicles': {'pinky2': 'T10'},
           'teleop': {'max_linear': 0.1, 'max_angular': 1.0}}
 CALLSIGNS = {'A': 'pinky1', 'B': 'pinky2'}
@@ -95,15 +91,6 @@ class FakeLink:
 
 class AutoLink(FakeLink):
     auto = True
-
-
-@pytest.fixture
-def factory():
-    layout = FactoryLayout(SLOTS, ROUTES, {'slot_10': {'x': 0, 'y': 0}},
-                           read_yaml('arena.yaml')['vehicles'])
-    f = Fleet(ROBOTS, layout, CONFIG, FakeLink, CALLSIGNS)
-    yield f
-    f.close()
 
 
 @pytest.fixture
@@ -237,43 +224,34 @@ def test_pending_features_say_not_yet(arena):
             arena.pending(feature)
 
 
-def test_choose_layout():
-    assert choose_layout('auto', 'pinky_factory.world') == 'factory'
-    assert choose_layout('auto', 'pinky_arena.world') == 'arena'
-    assert choose_layout('arena', 'pinky_factory.world') == 'arena'
-
-
-# ---- 공장 월드 --------------------------------------------------------------
-def test_factory_actions(factory):
-    park = factory.park('pinky1', 'slot_10')
-    assert park.action == 'park' and park.poses == [{'x': 0.3, 'y': -1.1, 'yaw': 0.0}]
+# ---- 기본 행동 --------------------------------------------------------------
+def test_basic_actions(arena):
+    park = arena.park('pinky1', 'slot_10')
+    assert park.action == 'park' and park.poses[-1]['y'] == pytest.approx(-0.15)
     with pytest.raises(TaskBusy):
-        factory.goto('pinky1', {'x': 0, 'y': 0})
-    assert len(factory.lap('pinky2', 'lap').poses) == 2
-    assert factory.cancel('pinky1') is True
-    assert factory.log.recent()[0]['state'] == CANCELED
-    assert factory.goto('pinky1', {'x': 1, 'y': 2}).timeout_s == 5.0
-    assert factory.stop_all() == {'pinky1': True, 'pinky2': True}
-    assert factory.unpark('pinky1', 'slot_10').poses == [{'x': 0.0, 'y': 0.0, 'yaw': 0.0}]
+        arena.goto('pinky1', {'x': 0, 'y': 0})
+    assert arena.cancel('pinky1') is True
+    assert arena.log.recent()[0]['state'] == CANCELED
+    assert arena.goto('pinky1', {'x': 1, 'y': 2}).timeout_s == 5.0
+    assert arena.stop_all() == {'pinky1': True, 'pinky2': False}
+    assert arena.unpark('pinky1', 'slot_10').poses == arena.layout.exits['slot_10']
     with pytest.raises(NotInLayout):
-        factory.drive('pinky2', 1)
-    with pytest.raises(NotInLayout):
-        factory.fuel('pinky2', 'wait')
+        arena.drive('pinky2', 9)                           # 없는 트랙
 
 
-def test_unknown_names(factory):
-    for call, args in ((factory.park, ('pinky9', 'slot_10')), (factory.park, ('pinky1', 'x')),
-                       (factory.lap, ('pinky1', 'nowhere')), (factory.unpark, ('pinky1', 'y'))):
+def test_unknown_names(arena):
+    for call, args in ((arena.park, ('pinky9', 'slot_10')), (arena.park, ('pinky1', 'x')),
+                       (arena.unpark, ('pinky1', 'y'))):
         with pytest.raises(UnknownName):
             call(*args)
 
 
-def test_snapshot_shape(factory):
-    factory.park('pinky1', 'slot_10')
-    snap = factory.snapshot()
-    assert snap['layout'] == 'factory'
+def test_snapshot_shape(arena):
+    park = arena.park('pinky1', 'slot_10')
+    snap = arena.snapshot()
+    assert snap['layout'] == 'arena'
     assert [r['name'] for r in snap['robots']] == ['pinky1', 'pinky2']
-    assert snap['robots'][0]['task']['goal'] == {'x': 0.3, 'y': -1.1, 'yaw': 0.0}
+    assert snap['robots'][0]['task']['goal'] == park.poses[0]
     assert snap['robots'][1]['task'] is None
 
 
@@ -350,7 +328,7 @@ def test_pgm_and_classify():
 
 
 def test_load_repository_map():
-    path = Path(__file__).resolve().parents[2] / 'pinky_parking_navigation/maps/factory.yaml'
+    path = Path(__file__).resolve().parents[2] / 'pinky_parking_navigation/maps/arena.yaml'
     if not path.is_file():
         pytest.skip('지도 파일이 없습니다')
     m = load_map(path)
@@ -367,14 +345,14 @@ def client_for(fleet, **kwargs):
     return TestClient(create_app(fleet, **kwargs))
 
 
-def test_http_api(factory):
-    client = client_for(factory, map_data={'width': 1})
+def test_http_api(arena):
+    client = client_for(arena, map_data={'width': 1})
     reply = client.post('/api/robots/pinky1/park', json={'slot': 'slot_10'})
     assert reply.status_code == 200 and reply.json()['task']['action'] == 'park'
     assert client.post('/api/robots/pinky1/goto', json={'x': 0, 'y': 0}).status_code == 409
     assert client.post('/api/robots/pinky1/park', json={'slot': 'nope'}).status_code == 404
     assert client.post('/api/robots/pinky2/goto', json={'x': 'a'}).status_code == 422
-    assert client.post('/api/robots/pinky2/drive', json={'track': 1}).status_code == 400
+    assert client.post('/api/robots/pinky2/drive', json={'track': 9}).status_code == 400
     assert client.post('/api/robots/pinky2/gap').status_code == 501
     assert client.post('/api/stop').json() == {'canceled': {'pinky1': True, 'pinky2': False}}
     assert client.get('/api/log').json()[0]['state'] == CANCELED
@@ -396,12 +374,12 @@ def test_http_arena_and_scenario(arena):
     assert client.post('/api/scenario/stop').status_code == 200
 
 
-def test_team_password(factory):
+def test_team_password(arena):
     from pinky_parking_control.server import password_matches
     assert password_matches('', None) and password_matches('abc', 'abc')
     assert not password_matches('abc', 'abd') and not password_matches('abc', None)
 
-    client = client_for(factory, password='team-secret')
+    client = client_for(arena, password='team-secret')
     assert client.get('/api/auth').json() == {'required': True}
     assert client.get('/api/robots').status_code == 200   # 보기는 열려 있다
     assert client.post('/api/robots/pinky1/park', json={'slot': 'slot_10'}).status_code == 401
@@ -432,6 +410,24 @@ def test_park_poses_enter_from_open_end_and_skip_when_parked():
     assert len(layout.park_poses(s11, down)) == 1
     crooked = {'x': 0.02, 'y': 0.16, 'yaw': math.pi / 2 + 0.4}        # 자리는 맞지만 비뚤다
     assert len(layout.park_poses(s11, crooked)) == 2
+    # 트레일러 차량 B 의 시작 자리: 10번 칸 중심보다 5 cm 아래, 아래를 봄 → 옮기지 않는다
+    b_start = {'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}
+    stay = [{'x': 0.0, 'y': -0.2, 'yaw': round(-math.pi / 2, 4)}]
+    assert layout.park_poses(s10, b_start) == stay
+    too_far = {'x': 0.0, 'y': -0.24, 'yaw': -math.pi / 2}               # 9 cm 어긋나면 다시 들어간다
+    assert len(layout.park_poses(s10, too_far)) == 2
+    toward_other = {'x': 0.0, 'y': 0.09, 'yaw': math.pi / 2}            # 11번 칸에서 10번 칸 쪽으로 6 cm
+    assert len(layout.park_poses(s11, toward_other)) == 2
+
+
+def test_slot_pose_uses_home_inside_slot():
+    """칸 기준 위치 맞추기: 시작 자리가 그 칸 안이면 시작 자리(B 는 아래를 보고 5 cm 아래)."""
+    robots = [{'name': 'pinky1', 'domain_id': 11, 'x': 0.0, 'y': 0.15, 'yaw': math.pi / 2},
+              {'name': 'pinky2', 'domain_id': 12, 'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}]
+    fleet = Fleet(robots, ArenaLayout(read_yaml('arena.yaml')), CONFIG, FakeLink, CALLSIGNS)
+    b_home = {'x': 0.0, 'y': -0.20, 'yaw': -math.pi / 2}
+    assert fleet.set_pose('pinky2', slot='slot_10')['pose'] == b_home
+    assert fleet.set_pose('pinky1', slot='slot_10')['pose']['y'] == pytest.approx(-0.15)
 
 
 def test_precise_tolerance_for_parking_only():

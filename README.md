@@ -8,12 +8,11 @@
 
 ## 기능
 
-- Gazebo 월드 하나에 Pinky Pro 두 대 동시 시뮬레이션 (공식 공장 월드, 임시 경기장 `robots_arena.yaml`)
+- 경기장 월드(2 × 2 m, 2차선 트랙, 주차 칸, 주유구역)에서 Pinky Pro 두 대 동시 시뮬레이션
 - 로봇별 `ROS_DOMAIN_ID`(pinky1 = 11, pinky2 = 12)와 Nav2
-- 주차 칸 이동(`park`), 경유점 주행(`lap`) 뼈대
 - 명령: `send_goal`(목표 전송), `auto_explore`(지도 작성용 탐색), `sim_speed`(시뮬레이션 속도 측정)
 - 관제센터: 행동 단위 API, 시연 시나리오 실행, 게임 조종석 방식 웹 화면 (`pinky_parking_control`, http://localhost:8080)
-- 동작 검사 스크립트 (`scripts/smoke_test.sh`, 관제 API는 `scripts/control_smoke_test.sh`)
+- 동작 검사 스크립트 (`scripts/smoke_test.sh`: 경기장에서 출차, 트랙 주행, 차선 변경, 주차)
 - 실물 로봇 두 대 연결과 실행 (`scripts/real_up.sh`, [docs/real_robot.md](docs/real_robot.md))
 - Docker 환경 (GPU 없음 / NVIDIA / Intel·AMD)
 
@@ -77,7 +76,7 @@ source install/setup.bash
 ### 동작 확인
 
 ```bash
-src/pinky_parking/scripts/smoke_test.sh   # 화면 없이 기본 사이클(park, lap). 성공하면 "SMOKE TEST PASSED"
+src/pinky_parking/scripts/smoke_test.sh   # 화면 없이 경기장 사이클(약 3분). 성공하면 "SMOKE TEST PASSED"
 colcon test --packages-select $(colcon list --base-paths src/pinky_parking --names-only) && colcon test-result
 ```
 
@@ -127,7 +126,7 @@ pinky_parking/
 ├── pinky_parking_*/       ROS 2 패키지 (위 표)
 ├── docker/                Dockerfile, entrypoint
 ├── run.sh                 Docker 실행 (그래픽 자동 감지)
-├── scripts/               동작 확인, 실물 실행, 임시 경기장·마커 생성, NVIDIA Container Toolkit 설치
+├── scripts/               동작 확인, 실물 실행, 경기장 월드·지도와 마커 생성, NVIDIA Container Toolkit 설치
 ├── compose.yaml           Docker Compose 설정
 ├── compose.gpu.yaml       NVIDIA GPU 설정
 ├── compose.real.yaml      실물 로봇용 호스트 네트워크 설정
@@ -144,8 +143,9 @@ pinky_parking/
 - [x] Docker 환경
 - [x] 관제센터 (행동 단위 API, 시연 시나리오, 웹 화면)
 - [x] 실물 두 대로 시연 시나리오 실행 (간격 조절 단계 제외)
-- [ ] 경기장 월드 (트랙, 주차 칸, 마커). 지금은 임시 월드
-- [ ] 차량 길이 2종 (기본 / 트레일러 10 cm)
+- [x] 경기장 월드 (트랙, 주차 칸, 주유구역)
+- [ ] 경기장 마커 (ArUco)
+- [x] 차량 길이 2종 (기본 / 트레일러 10 cm)
 - [x] 출차, 주차 칸 진입
 - [ ] 주차 칸 정밀 정렬 (마커 기준, 반복 정지 오차 기록)
 - [x] 트랙 주행, 차선 변경

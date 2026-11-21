@@ -99,18 +99,18 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal <x> <y> <yaw>  # 0.3 m
 
 경기장 출력물(테이프, 마커)이 없어 센서로 위치를 잡을 수 없을 때, **시작 위치 + 바퀴 기록(오도메트리)**으로 도면 좌표를 따라 움직여 봅니다. 지도 만들기(4번)가 필요 없습니다. 오래 달리면 바퀴 미끄러짐만큼 오차가 쌓이므로 짧은 동작부터 봅니다.
 
-**로봇 놓기.** 시연은 주차된 상태에서 시작합니다(`pinky_parking_bringup/config/robots_arena.yaml`).
+**로봇 놓기.** 시연은 주차된 상태에서 시작합니다(`pinky_parking_bringup/config/robots.yaml`).
 
 | 로봇 | 도메인 | 시작 자리 | 도면 좌표 (x, y, 방향) |
 |---|---|---|---|
 | A = pinky1 | 11 | 11번 칸 | (0, +0.15), 위(+y)를 봄 |
-| B = pinky2 | 12 | 10번 칸 | (0, −0.15), 위(+y)를 봄 |
+| B = pinky2 | 12 | 10번 칸 | (0, −0.20), 아래(−y)를 봄 |
 
-- 두 로봇을 **같은 방향을 보게 앞뒤로** 놓습니다. B 중심에서 앞으로 30 cm에 A 중심. 둘 사이 가운데(B 앞 15 cm)가 경기장 원점입니다. 바닥에 테이프로 표시해 두면 다시 놓기 쉽습니다.
-- 로봇이 보는 방향이 도면의 위(+y), 오른쪽이 +x입니다. 원점에서 **왼쪽 1.1 m, 오른쪽 0.8 m, 앞뒤 1 m**를 비워 둡니다(2번 트랙 바깥, 왼쪽 주유구역까지).
+- 두 로봇을 **등을 맞대고** 놓습니다. A는 위(+y), B는 아래(−y)를 봅니다. 위치는 바퀴 축 가운데 기준으로 A가 원점에서 위로 15 cm, B가 원점에서 아래로 20 cm입니다. B는 뒤(위쪽)에 다는 트레일러가 칸 안에 들도록 칸 중심보다 5 cm 아래에 섭니다. 바닥에 테이프로 표시해 두면 다시 놓기 쉽습니다.
+- A가 보는 방향이 도면의 위(+y), A의 오른쪽이 +x입니다. 원점에서 **왼쪽 1.1 m, 오른쪽 0.8 m, 앞뒤 1 m**를 비워 둡니다(2번 트랙 바깥, 왼쪽 주유구역까지).
 - 로봇을 켤 때(bringup을 띄울 때) 그 자리에 있어야 합니다. 옮겼으면 bringup부터 다시 켜거나, RViz의 **2D Pose Estimate**로 자리를 다시 알려 줍니다.
 
-**한 대만 시험 (A).** B 없이 A만 연결해도 됩니다. A를 11번 칸 자리(원점에서 앞으로 15 cm)에 놓고, 아래 명령에 `only:=pinky1`을 붙입니다. 시나리오에서 B의 행동과 B만 있는 단계는 "B 없음"으로 건너뜁니다.
+**한 대만 시험 (A).** B 없이 A만 연결해도 됩니다. A를 11번 칸 자리(원점에서 위로 15 cm)에 놓고, 아래 명령에 `only:=pinky1`을 붙입니다. 시나리오에서 B의 행동과 B만 있는 단계는 "B 없음"으로 건너뜁니다.
 
 **실행 (PC, `PINKY_NETWORK=host ./run.sh` 컨테이너 안).** 로봇에서 bringup과 감시 노드가 떠 있어야 합니다(2번).
 
@@ -120,17 +120,17 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup real_check          # 연결 점
 ros2 launch pinky_parking_bringup real.launch.py only:=pinky1       # Nav2 (두 대면 only 를 뺌)
 # 새 터미널 (같은 컨테이너)
 ros2 launch pinky_parking_control control.launch.py only:=pinky1 \
-  robots:=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots_arena.yaml
+  robots:=$PWD/install/pinky_parking_bringup/share/pinky_parking_bringup/config/robots.yaml
 # 브라우저 http://localhost:8080 → 경기장 화면. "시연 시나리오"의 [다음 단계]로 한 단계씩
 ```
 
-- `real_check`는 `/odom`·`/scan`이 오는지, **같은 도메인에 다른 로봇이 섞였는지**(같은 와이파이의 다른 팀), 로봇과 PC의 시계 차이, 감시 노드, 배터리 전압을 봅니다. ✗가 있으면 고친 뒤 다시 돌립니다. 도메인이 겹치면 두 쪽 모두 다른 번호로 바꿉니다(로봇 `~/.bashrc`와 `robots_arena.yaml`).
+- `real_check`는 `/odom`·`/scan`이 오는지, **같은 도메인에 다른 로봇이 섞였는지**(같은 와이파이의 다른 팀), 로봇과 PC의 시계 차이, 감시 노드, 배터리 전압을 봅니다. ✗가 있으면 고친 뒤 다시 돌립니다. 도메인이 겹치면 두 쪽 모두 다른 번호로 바꿉니다(로봇 `~/.bashrc`와 `robots.yaml`).
 - `real.launch.py`는 로봇마다 `robot_nav.launch.py localization:=odom use_sim_time:=false`를 띄웁니다. AMCL 대신 `odom_localizer`가 시작 자리를 도면 좌표로 보고 `map → odom`과 위치(`amcl_pose`)를 냅니다. 지도는 벽 없는 경기장 바닥(`maps/arena_open`)입니다.
 - 실물용 기본값: 직진 상한 `max_speed:=0.1`, 도착 허용 거리 `goal_tolerance:=0.08`(공식 0.25 m로는 출차 0.4 m를 가다 말고 도착으로 칩니다), 회전 상한 `max_turn:=0.8`(바퀴 미끄러짐을 줄임).
 - 첫 명령은 **[다음 단계] 한 번**처럼 짧은 것부터, 사람이 로봇 옆에서 보며 합니다. 화면의 "전체 정지(Esc)"와 감시 노드, 전원 스위치를 확인해 둡니다.
 - 관제 화면의 유닛 카드에 배터리 전압이 나옵니다. 7 V 아래면 충전합니다.
 - 라이다가 본 실제 물체(사람 발, 의자)는 장애물로 피해 갑니다. 경로가 막히면 주행이 실패하니 주변을 비웁니다.
-- 같은 설정의 시뮬레이션: `sim.launch.py robots:=...robots_arena.yaml map:=.../arena_open.yaml localization:=odom max_speed:=0.1 goal_tolerance:=0.08 max_turn:=0.8`
+- 같은 설정의 시뮬레이션: `sim.launch.py map:=.../arena_open.yaml localization:=odom max_speed:=0.1 goal_tolerance:=0.08 max_turn:=0.8`
 
 ## 6. 끝내기
 
