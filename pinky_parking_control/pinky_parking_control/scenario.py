@@ -4,6 +4,7 @@
 한 단계 안에서 로봇끼리는 동시에, 같은 로봇의 행동은 적힌 순서대로 한다.
 단계 하나씩(다음 단계) 또는 끝까지 이어서(전체 실행) 돌릴 수 있다.
 """
+import math
 import threading
 import time
 
@@ -12,7 +13,10 @@ from pinky_parking_control.model import SUCCEEDED
 READY, RUNNING, DONE, FAILED, SKIPPED, STOPPED = (
     'ready', 'running', 'done', 'failed', 'skipped', 'stopped')
 ACTION_WORDS = {'park': '주차', 'unpark': '출차', 'drive': '트랙 주행', 'lane_change': '차선 변경',
-                'fuel': '주유', 'goto': '이동', 'vehicle': '차종', 'confirm': '사람 확인'}
+                'fuel': '주유', 'goto': '이동', 'vehicle': '차종', 'confirm': '사람 확인',
+                'wait_clear': '주변이 빌 때까지 기다림'}
+CLEAR_DISTANCE = 0.5      # wait_clear: 다른 로봇이 이만큼 [m] 떨어지면 출발
+CLEAR_TIMEOUT = 90.0      # wait_clear: 이 시간 [s] 이 지나도 안 비면 실패
 FUEL_WORDS = {'wait': '대기선 30', 'enter': '주유구역 20', 'leave': '트랙 복귀'}
 
 
@@ -31,6 +35,8 @@ def describe(action):
         what = action.get('type', '')
     elif do == 'confirm':
         what = action.get('text', '')
+    elif do == 'wait_clear':
+        what = f'({action.get("distance", CLEAR_DISTANCE)} m)'
     elif do == 'goto':
         what = f'({action.get("x")}, {action.get("y")})'
     else:
@@ -189,6 +195,9 @@ class ScenarioRunner:
             self.waiting = None
             self._confirm.clear()
             return '' if not self._stop.is_set() else '멈춤'
+        if do == 'wait_clear':
+            return self._wait_clear(name, float(action.get('distance', CLEAR_DISTANCE)),
+                                    float(action.get('timeout', CLEAR_TIMEOUT)))
         starters = {
             'park': lambda: f.park(name, action['slot']),
             'unpark': lambda: f.unpark(name, action['slot']),
@@ -205,3 +214,18 @@ class ScenarioRunner:
         if task.state != SUCCEEDED:
             return f'{describe(action)}: {task.detail or task.state}'
         return ''
+
+    def _wait_clear(self, name, distance, timeout):
+        """다른 로봇이 모두 distance 보다 멀어질 때까지 기다린다 (옆을 지나다 서로 막히지 않게)."""
+        deadline = time.monotonic() + timeout
+        while not self._stop.is_set():
+            me = self.fleet._pose(name)
+            others = [self.fleet._pose(other) for other in self.fleet.links if other != name]
+            gaps = [math.hypot(o['x'] - me['x'], o['y'] - me['y']) for o in others if o and me]
+            if me and all(gap >= distance for gap in gaps):
+                return ''
+            if time.monotonic() > deadline:
+                near = min(gaps) if gaps else 0.0
+                return f'{name}: {timeout:.0f}초 기다려도 다른 로봇이 {near:.2f} m 안에 있습니다'
+            time.sleep(self.poll_s)
+        return '멈춤'

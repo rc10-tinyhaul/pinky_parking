@@ -214,7 +214,8 @@
   // 배터리 표시: 전압과 단계 (실물 로봇만 값이 있다)
   function batteryView(r) {
     if (r.battery_v == null) return { text: '배터리 —', level: '' };
-    return { text: `${fixed(r.battery_v, 2)} V`, level: r.battery_v < 7.0 ? 'empty' : r.battery_v < 7.3 ? 'low' : '' };
+    const pct = r.battery_pct == null ? '' : ` · ${r.battery_pct}%`;
+    return { text: `${fixed(r.battery_v, 2)} V${pct}`, level: r.battery_v < 7.0 ? 'empty' : r.battery_v < 7.3 ? 'low' : '' };
   }
 
   // 가장 급한 알림 (오류 먼저). 없으면 null
@@ -423,23 +424,47 @@
         + (r.odom_hz == null ? '' : `<span ${r.odom_hz < 5 ? 'data-bad' : ''}>바퀴 <b>${fixed(r.odom_hz, 0)} Hz</b></span>`)
         + (r.scan_hz == null ? '' : `<span ${r.scan_hz < 3 ? 'data-bad' : ''}>라이다 <b>${fixed(r.scan_hz, 0)} Hz</b></span>`)
         + markerLine(r.marker);
+      const usageHtml = usageView(r);
+      if (q('usage').innerHTML !== usageHtml) q('usage').innerHTML = usageHtml;
       drawSprite(q('sprite'), r);
     }
   }
 
-  // ---- 카메라 (실물 로봇이 내보내는 영상 주소를 그대로 보여 준다) -------------------
+  // 사용량 (관제 서버를 켠 뒤): 충전, 달린 거리, 바퀴 사용, 움직인 시간
+  function usageView(r) {
+    const u = r.usage;
+    if (!u) return '';
+    const item = (label, value, title = '') => `<div${title ? ` title="${esc(title)}"` : ''}><dt>${label}</dt><dd>${value}</dd></div>`;
+    const minutes = (s) => (s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`);
+    const charge = r.battery_v == null ? '—'
+      : u.battery_used_v == null ? `${fixed(r.battery_v, 2)} V`
+        : `${u.battery_used_v >= 0 ? '−' : '+'}${fixed(Math.abs(u.battery_used_v), 2)} V`;
+    const perMeter = u.battery_used_v != null && u.distance_m > 0.5 ? ` (${fixed(u.battery_used_v / u.distance_m * 1000, 0)} mV/m)` : '';
+    return item('충전', r.battery_pct == null ? charge : `${r.battery_pct}% · ${charge}`, u.battery_start_v == null ? '' : `켠 뒤 ${fixed(u.battery_start_v, 2)} V 에서 지금까지 쓴 전압${perMeter}`)
+      + item('달린 거리', `${fixed(u.distance_m, 2)} m`)
+      + item('움직인 시간', minutes(u.drive_s))
+      + item('바퀴 회전 좌/우', `${fixed(u.wheel_rev[0], 0)} / ${fixed(u.wheel_rev[1], 0)} 바퀴`)
+      + item('바퀴 부하 좌/우', `${fixed(u.effort[0], 1)} / ${fixed(u.effort[1], 1)}`, '토크 추정: 바퀴 속도 변화량의 합 [m/s]. 핑키프로는 모터 토크를 내보내지 않아 가감속으로 어림합니다')
+      + item('돈 각도', `${u.turn_deg}°`);
+  }
+
+  // ---- 카메라 (유닛마다 작게. 실물 로봇이 내보내는 영상 주소를 그대로 보여 준다) -----
   function renderCamera() {
-    const r = sel();
-    const url = r && r.camera_url;
+    const robots = state.robots.filter((r) => r.camera_url);
     const panel = $('#camera-panel');
-    panel.hidden = !url;
-    if (!url) { state.camera.shown = ''; return; }
-    $('#camera-meta').textContent = `${sign(r)} ${r.name}`;
-    const want = state.camera.on ? url : '';
-    if (state.camera.shown !== want) {
-      state.camera.shown = want;
-      const img = $('#camera-img');
-      if (want) img.src = want; else img.removeAttribute('src');   // 끄면 영상 받기를 멈춘다
+    panel.hidden = !robots.length;
+    const grid = $('#camera-grid');
+    const key = robots.map((r) => r.name).join() + (state.camera.on ? ':on' : ':off');
+    if (grid.dataset.key !== key) {
+      grid.dataset.key = key;
+      grid.textContent = '';                                        // 끄면 영상 받기를 멈춘다
+      for (const r of robots) {
+        const cell = document.createElement('figure');
+        cell.className = 'camera-cell';
+        cell.innerHTML = `<figcaption><span class="sign" style="background:${unitColor(r)}">${esc(sign(r))}</span>${esc(r.name)}</figcaption>`
+          + (state.camera.on ? `<img class="camera-img" alt="${esc(sign(r))} 카메라 영상" src="${esc(r.camera_url)}">` : '<div class="camera-off">꺼짐</div>');
+        grid.appendChild(cell);
+      }
     }
     const toggle = $('#camera-toggle');
     toggle.textContent = state.camera.on ? '끄기' : '켜기';
@@ -1115,6 +1140,18 @@
   document.addEventListener('keyup', (event) => { state.drive.keys.delete(event.key.toLowerCase()); });
   window.addEventListener('blur', () => { state.drive.keys.clear(); });
 
+  async function homeAll() {
+    const real = state.robots.some((r) => r.battery_v != null);
+    const ask = real ? '실물 로봇입니다. 로봇을 손으로 시작 칸(A 11번, B 10번)에 놓았나요? 위치를 그 자리로 맞춥니다.'
+      : '모든 로봇을 시작 칸(A 11번, B 10번)으로 옮기고 시나리오를 처음으로 돌립니다.';
+    if (!window.confirm(ask)) return;
+    if (state.drive.on) stopDriving();
+    try {
+      const res = await api('POST', '/api/home');
+      toast(res.sim ? '주차 자리로 옮겼습니다' : '위치를 주차 자리로 맞췄습니다');
+    } catch (error) { toast(`주차 자리로 실패: ${error.message}`, 'negative'); }
+  }
+
   async function stopAll() {
     if (state.drive.on) stopDriving();
     try { await api('POST', '/api/stop'); toast('전체 정지'); } catch (error) { toast(`전체 정지 실패: ${error.message}`, 'negative'); }
@@ -1137,6 +1174,7 @@
 
   $$('.cmd').forEach((b) => b.addEventListener('click', () => { if (!b.dataset.pending) runCommand(b.dataset.cmd); }));
   $('#stop-all').addEventListener('click', stopAll);
+  $('#home-all').addEventListener('click', homeAll);
   ['#show-slam', '#show-scan'].forEach((id) => $(id).addEventListener('change', () => { sensorTick(); drawField(); }));
   $('#show-wide').addEventListener('change', () => { layoutField(); drawField(); });
   $('#show-room').addEventListener('change', drawField);

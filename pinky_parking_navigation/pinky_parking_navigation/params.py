@@ -34,7 +34,11 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
         amcl['sigma_hit'] = 0.08
         amcl['z_hit'], amcl['z_rand'] = 0.7, 0.3   # 지도에 없는 것(사람, 옮긴 물건)에 덜 끌려가게
         amcl['resample_interval'] = 1
-        amcl['transform_tolerance'] = 0.5      # 와이파이로 오는 스캔이 조금 늦어도 받는다
+        # AMCL 은 map→odom 에 '스캔 시각 + 이 값' 을 찍는다. 와이파이로 오는 스캔이 0.9 s 까지 늦게
+        # 와서 0.5 로는 Nav2 가 '변환이 너무 오래됐다'(Transform data too old)며 멈췄다. 공식 값 1.0 을 쓴다
+        amcl['transform_tolerance'] = 1.0
+        controller = params.setdefault('controller_server', {}).setdefault('ros__parameters', {})
+        controller.setdefault('FollowPath', {})['transform_tolerance'] = 0.5   # 공식 0.2
     if max_speed is not None:
         controller = params.setdefault('controller_server', {}).setdefault('ros__parameters', {})
         follow = controller.setdefault('FollowPath', {})

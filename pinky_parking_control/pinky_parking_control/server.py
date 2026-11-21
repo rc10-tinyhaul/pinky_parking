@@ -22,8 +22,10 @@ API (자세한 형식은 http://<host>:8080/docs):
 import argparse
 import asyncio
 import hmac
+import math
 import os
 from pathlib import Path
+import subprocess
 import sys
 import time
 
@@ -74,7 +76,7 @@ def password_matches(expected, given):
 
 
 def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, password='',
-               scenario=None):
+               scenario=None, teleport=None):
     """
     관제 API 를 만든다.
 
@@ -170,6 +172,20 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
         if body.get('slot'):
             return _call(fleet.set_pose, name, None, str(body['slot']))
         return _call(fleet.set_pose, name, body)
+
+    @commands.post('/api/home', tags=['기본 이동'])
+    def home():
+        """
+        모든 로봇을 시작 자리(주차 상태, robots.yaml)로 되돌린다.
+
+        시뮬레이션이면 Gazebo 의 로봇도 옮긴다. 실물은 로봇을 손으로 칸에 놓은 뒤 누른다 (위치만 맞춤).
+        """
+        if scenario is not None and scenario.status()['running']:
+            raise HTTPException(409, '시나리오가 실행 중입니다. 먼저 멈추세요')
+        result = _call(fleet.reset_home, teleport)
+        if scenario is not None:
+            scenario.reset()
+        return result
 
     @commands.post('/api/robots/{name}/markers/register', tags=['기본 이동'])
     def markers_register(name: str, body: dict = Body(..., examples=[{'slot': 'slot_11'}])):
@@ -303,6 +319,23 @@ def _share(package):
     return Path(get_package_share_directory(package))
 
 
+def gazebo_teleport(world):
+    """시뮬레이션 로봇 모델을 옮기는 함수. Gazebo 가 없으면(실물) False 를 돌려준다."""
+    def teleport(name, pose):
+        half = pose['yaw'] / 2
+        request = (f'name: "{name}", position: {{x: {pose["x"]}, y: {pose["y"]}, z: 0.01}}, '
+                   f'orientation: {{z: {math.sin(half)}, w: {math.cos(half)}}}')
+        try:
+            out = subprocess.run(
+                ['gz', 'service', '-s', f'/world/{world}/set_pose', '--reqtype', 'gz.msgs.Pose',
+                 '--reptype', 'gz.msgs.Boolean', '--timeout', '1500', '--req', request],
+                capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return 'data: true' in out.stdout
+    return teleport
+
+
 def _yaml(path):
     return yaml.safe_load(Path(path).read_text(encoding='utf-8')) or {}
 
@@ -382,7 +415,7 @@ def main():
     fleet = Fleet(robots, layout, config, RobotLink, callsigns)
     scenario = ScenarioRunner(fleet, scenario_data) if scenario_data else None
     app = create_app(fleet, map_data, share / 'static', config.get('status_rate_hz', 10),
-                     password, scenario)
+                     password, scenario, gazebo_teleport(Path(world_name).stem))
     host, port = args.host or config.get('host', '0.0.0.0'), args.port or config.get('port', 8080)
     names = ', '.join(f'{r["name"]}(도메인 {r["domain_id"]})' for r in robots)
     print(f'관제 서버: http://{host}:{port}  배치: {layout.to_dict()["name"]}  로봇: {names}',

@@ -8,7 +8,7 @@
 그래서 로봇은 따로 둔 도메인(robot_domain, 기본 = 도메인 + 100)에서 켜고, 이 노드가 그 도메인의
 토픽을 받아 시각만 PC 시계로 고쳐 원래 도메인으로 다시 낸다. 속도 명령은 반대로 넘긴다.
 
-  로봇 도메인 → PC 도메인 (시각 보정): odom, scan, tf      (그대로): tf_static, battery/voltage
+  로봇 도메인 → PC 도메인 (시각 보정): odom, scan, tf      (그대로): tf_static, battery/voltage, battery/percent
   PC 도메인 → 로봇 도메인: cmd_vel
 
   ros2 run pinky_parking_bringup clock_bridge --domain 11            # 로봇은 ROS_DOMAIN_ID=111
@@ -92,6 +92,7 @@ def main():
         'tf': pc.create_publisher(TFMessage, 'tf', 100),
         'tf_static': pc.create_publisher(TFMessage, 'tf_static', latched),
         'battery': pc.create_publisher(Float32, 'battery/voltage', 1),
+        'battery_pct': pc.create_publisher(Float32, 'battery/percent', 1),
         'cmd_vel': robot.create_publisher(Twist, 'cmd_vel', 10),
     }
 
@@ -143,6 +144,8 @@ def main():
     robot.create_subscription(TFMessage, 'tf_static', on_tf_static, latched)
     robot.create_subscription(
         Float32, 'battery/voltage', lambda m: pubs['battery'].publish(m), 1)
+    robot.create_subscription(
+        Float32, 'battery/percent', lambda m: pubs['battery_pct'].publish(m), 1)
     pc.create_subscription(Twist, 'cmd_vel', on_cmd_vel, 10)
     pc.create_timer(5.0, report)
     log.info(f'시계 보정 중계: 로봇 도메인 {robot_domain} ↔ PC 도메인 {args.domain}')

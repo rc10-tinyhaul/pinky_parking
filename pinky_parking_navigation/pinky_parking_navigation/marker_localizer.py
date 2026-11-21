@@ -69,6 +69,7 @@ class MarkerLocalizer(Node):
 
     # ---- 설정 파일 ------------------------------------------------------
     def load(self):
+        self.file_mtime = self.file.stat().st_mtime if self.file.is_file() else 0.0
         data = yaml.safe_load(self.file.read_text(encoding='utf-8')) if self.file.is_file() else {}
         self.config = data or {}
         camera = self.config.get('camera') or {}
@@ -145,16 +146,31 @@ class MarkerLocalizer(Node):
             self.get_logger().warn('등록 실패: 지금 보이는 마커가 없습니다')
             self.last_fix = {'note': '등록 실패: 보이는 마커 없음', 'time': time.time()}
             return
+        self.load()      # 다른 로봇이 그사이 등록한 마커를 지우지 않도록 파일에서 다시 읽고 더한다
         for marker_id, in_robot in seen.items():
             self.table[marker_id] = geo.marker_from_robot(robot, in_robot)
         self.save()
+        self.file_mtime = self.file.stat().st_mtime
         ids = ', '.join(str(k) for k in sorted(seen))
         self.last_fix = {'note': f'마커 {ids} 등록', 'time': time.time()}
         self.get_logger().info(f'마커 {ids} 를 등록했습니다 (로봇 위치 {robot[0]:.3f}, {robot[1]:.3f})')
 
     # ---- 보정 ----------------------------------------------------------
+    def reload_if_changed(self):
+        """마커 파일이 바뀌었으면 다시 읽는다 (로봇 여러 대가 같은 파일을 쓴다)."""
+        try:
+            mtime = self.file.stat().st_mtime
+        except OSError:
+            return
+        if mtime != self.file_mtime:
+            self.load()
+            self.get_logger().info(f'마커 파일이 바뀌어 다시 읽었습니다: {sorted(self.table)}')
+
     def tick(self):
         now = time.monotonic()
+        self.ticks = getattr(self, 'ticks', 0) + 1
+        if self.ticks % 25 == 0:        # 5 초마다
+            self.reload_if_changed()
         seen = self.steady(now)
         self.seen = seen
         known = {k: v for k, v in seen.items() if k in self.table}
