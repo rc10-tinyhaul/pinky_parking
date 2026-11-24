@@ -113,7 +113,10 @@ class MarkerLocalizer(Node):
                 found = {}
                 focal, center, forward = geo.camera_from_reply(
                     data, self.focal, self.center, self.forward)
+                width, height = data.get('width', 0), data.get('height', 0)
                 for m in data.get('markers', []):
+                    if not geo.fully_visible(m['corners'], width, height):
+                        continue                    # 화면 가장자리에 걸린 마커는 위치가 틀린다
                     result = geo.marker_in_robot(
                         m['corners'], self.sizes.get(int(m['id']), self.size), focal, center,
                         forward)
