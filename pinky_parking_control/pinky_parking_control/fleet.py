@@ -158,10 +158,11 @@ class Fleet:
     # ---- 주차·출차 -----------------------------------------------------
     def park(self, name, slot):
         center = self._pick(self.layout.slots, slot, '주차 칸')
-        poses = [center]
-        if hasattr(self.layout, 'park_poses'):       # 경기장: 칸 뒤에 먼저 서서 똑바로 들어간다
-            poses = self.layout.park_poses(center, self._pose(name))
-        return self._start(name, 'park', slot, poses, precise=True)
+        poses = self.layout.park_poses(center, self._pose(name))
+        # 칸 입구까지는 Nav2, 입구에서 칸 가운데까지는 관제가 직접 곧게 몬다 (robot_link._approach).
+        # 이미 칸 안에 서 있으면 자리 하나뿐이라 Nav2 로 그 자리만 맞춘다.
+        mode = 'approach' if len(poses) == 2 else ''
+        return self._start(name, 'park', slot, poses, mode=mode, precise=True)
 
     def unpark(self, name, slot):
         # 출차한 자리가 곧 트랙 출발점이라 정밀하게 선다 (느슨하면 차선 밖에서 출발한다)

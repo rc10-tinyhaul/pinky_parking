@@ -7,6 +7,7 @@ Nav2 액션(navigate_to_pose, follow_waypoints)과 /tf 는 도메인을 건너�
 """
 from collections import deque
 import json
+import math
 import threading
 import time
 
@@ -20,6 +21,7 @@ from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path
+from pinky_parking_control import approach
 from pinky_parking_control import health
 from pinky_parking_control.mapdata import encode_grid
 from pinky_parking_control.mapdata import scan_points
@@ -57,7 +59,25 @@ AMCL_QOS = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
 POSE_FRESH_S = 5.0   # 이보다 오래된 위치는 '위치 모름'으로 본다
 LATCHED = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL)
+APPROACH_RATE_HZ = 20       # 주차 칸 마지막 직선 진입에서 속도 명령을 내는 빈도
+APPROACH_TIMEOUT_S = 40.0   # 직선 진입이 이보다 오래 걸리면 멈추고 실패로 끝낸다
 SLAM_FRAME = 'slam'          # localization:=slam 일 때 SLAM 지도의 프레임 (map -> slam 은 고정 변환)
+
+
+def stamp_seconds(stamp):
+    return stamp.sec + stamp.nanosec * 1e-9
+
+
+def compose_delta(pose, odom_then, odom_now):
+    """pose(odom_then 때의 지도 자리) 에 odom_then → odom_now 움직임을 더한 지금 지도 자리."""
+    x0, y0, t0 = odom_then
+    x1, y1, t1 = odom_now
+    c, s = math.cos(-t0), math.sin(-t0)
+    dx, dy = c * (x1 - x0) - s * (y1 - y0), s * (x1 - x0) + c * (y1 - y0)   # then 기준 이동
+    yaw = pose['yaw']
+    return {'x': pose['x'] + math.cos(yaw) * dx - math.sin(yaw) * dy,
+            'y': pose['y'] + math.sin(yaw) * dx + math.cos(yaw) * dy,
+            'yaw': math.atan2(math.sin(yaw + t1 - t0), math.cos(yaw + t1 - t0))}
 
 
 def pose_stamped(pose):
@@ -81,6 +101,8 @@ class RobotLink:
         self._handle = None
         self._cancel_wanted = False
         self.pose, self.pose_time = None, 0.0
+        self.pose_stamp = None                    # amcl_pose 의 시각 [s] (그 뒤 odom 으로 이어 붙인다)
+        self.odom_history = deque(maxlen=400)     # (시각 [s], x, y, yaw): odom 이 낸 자리
         self.teleop_time = 0.0   # 마지막 직접 운전 명령 시각 (0 = 직접 운전 아님)
         self.speed = {'linear': 0.0, 'angular': 0.0}
         self.battery_v = None
@@ -138,6 +160,7 @@ class RobotLink:
         with self._lock:
             self.pose = {'x': p.x, 'y': p.y, 'yaw': quaternion_to_yaw(q.x, q.y, q.z, q.w)}
             self.pose_time = time.time()
+            self.pose_stamp = stamp_seconds(msg.header.stamp)
             task = self.task
             if task is not None and not task.done:      # 궤적 기록 (보정·분석용)
                 row = [self.pose_time - task.started, p.x, p.y, self.pose['yaw'],
@@ -146,7 +169,10 @@ class RobotLink:
 
     def _on_odom(self, msg):
         twist = msg.twist.twist
+        p, q = msg.pose.pose.position, msg.pose.pose.orientation
         with self._lock:
+            self.odom_history.append((stamp_seconds(msg.header.stamp), p.x, p.y,
+                                      quaternion_to_yaw(q.x, q.y, q.z, q.w)))
             self.speed = {'linear': twist.linear.x, 'angular': twist.angular.z}
             now = time.time()
             self._stamps['odom'].append(now)
@@ -245,6 +271,12 @@ class RobotLink:
             missed = list(getattr(response.result, 'missed_waypoints', []) or [])
             if missed:
                 self._finish(task, FAILED, f'경유점 {len(missed)}개를 지나지 못했습니다')
+            elif task.mode == 'approach':
+                # 칸 입구에 섰다: 마지막 직선은 관제가 직접 몬다 (별도 스레드, 끝나면 _finish)
+                with self._lock:
+                    self._handle = None
+                threading.Thread(target=self._approach, args=(task,), daemon=True,
+                                 name=f'approach-{self.name}').start()
             else:
                 self._finish(task, SUCCEEDED)
         elif status == GoalStatus.STATUS_CANCELED:
@@ -262,6 +294,55 @@ class RobotLink:
                 self._handle, self._cancel_wanted = None, False
         self._on_finish(task)
 
+    # ---- 지금 자리 (AMCL + 그 뒤 odom) -----------------------------------
+    def current_pose(self):
+        """
+        지금 자리: 마지막 amcl_pose 에 그 뒤 odom 으로 움직인 만큼을 더한다.
+
+        AMCL 은 일정 거리를 움직여야 위치를 새로 내므로 amcl_pose 만으로는 늦다. 마커 보정이
+        AMCL 을 고치면(initialpose) 새 amcl_pose 부터 다시 이어 붙는다.
+        """
+        with self._lock:
+            pose, stamp, history = self.pose, self.pose_stamp, list(self.odom_history)
+        if pose is None:
+            return None
+        if stamp is None or not history:
+            return dict(pose)
+        base = min(history, key=lambda h: abs(h[0] - stamp))
+        if abs(base[0] - stamp) > 0.5:          # 그때의 odom 이 없다: 이어 붙이지 않는다
+            return dict(pose)
+        return compose_delta(pose, base[1:], history[-1][1:])
+
+    def _approach(self, task):
+        """주차 칸 입구 → 칸 가운데 직선 진입 (approach.command). 속도 명령을 계속 내고 끝에 0."""
+        target = task.poses[-1]
+        period, arrived = 1.0 / APPROACH_RATE_HZ, False
+        end = time.monotonic() + APPROACH_TIMEOUT_S
+        state, detail = FAILED, '마지막 직선 진입 시간이 넘었습니다'
+        while time.monotonic() < end:
+            with self._lock:
+                canceled = self._cancel_wanted or task is not self.task or task.done
+            if canceled or not self.context.ok():
+                state, detail = CANCELED, task.detail or '취소했습니다'
+                break
+            pose = self.current_pose()
+            if pose is None:
+                state, detail = FAILED, '로봇 위치를 모릅니다'
+                break
+            v, w, phase = approach.command(pose, target, arrived)
+            if phase == 'done':
+                state, detail = SUCCEEDED, ''
+                break
+            arrived = arrived or phase == 'align'
+            msg = Twist()
+            msg.linear.x, msg.angular.z = float(v), float(w)
+            self.cmd_vel.publish(msg)
+            time.sleep(period)
+        for _ in range(3):                      # 끝: 멈춤 명령 (감시 노드 규칙)
+            self.cmd_vel.publish(Twist())
+            time.sleep(0.02)
+        self._finish(task, state, detail)
+
     # ---- 명령 (API 스레드) ---------------------------------------------
     def nav2_ready(self):
         return self.clients['pose'].server_is_ready()
@@ -273,7 +354,10 @@ class RobotLink:
         task.mode 가 'path' 면 poses 를 이어진 경로로 보고 follow_path (멈추지 않고 따라간다).
         아니면 poses 가 하나일 때 navigate_to_pose, 여럿일 때 follow_waypoints (점마다 도착 판정).
         """
-        kind = task.mode or ('pose' if len(task.poses) == 1 else 'waypoints')
+        if task.mode == 'approach':      # 칸 입구까지만 Nav2, 그 뒤 칸 가운데까지는 _approach
+            kind = 'pose'
+        else:
+            kind = task.mode or ('pose' if len(task.poses) == 1 else 'waypoints')
         client = self.clients[kind]
         with self._lock:
             if self.task is not None and not self.task.done:
