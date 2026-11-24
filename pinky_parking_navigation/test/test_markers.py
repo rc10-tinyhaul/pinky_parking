@@ -88,3 +88,11 @@ def test_arena_markers_match_arena_layout():
                            .read_text(encoding='utf-8'))['markers']
     for marker_id, m in arena.items():
         assert table[marker_id] == {'x': m['x'], 'y': m['y'], 'yaw': m['yaw']}
+
+
+def test_fully_visible_rejects_markers_touching_the_edge():
+    inside = [[600, 600], [680, 600], [690, 650], [590, 650]]
+    assert geo.fully_visible(inside, 1280, 720)
+    cut = [[600, 690], [680, 690], [690, 719], [590, 719]]         # 아래 가장자리에 걸림
+    assert not geo.fully_visible(cut, 1280, 720)
+    assert geo.fully_visible(cut, 0, 0)                              # 화면 크기를 모르면 거르지 않음

@@ -116,3 +116,20 @@ def camera_from_reply(reply, focal, center, forward):
     if 'cx' in camera and 'cy' in camera:
         center = (float(camera['cx']), float(camera['cy']))
     return (float(camera.get('focal_px', focal)), center, float(camera.get('forward', forward)))
+
+
+EDGE_MARGIN_PX = 4      # 꼭짓점이 화면 가장자리에서 이만큼 안이면 마커가 잘렸을 수 있다
+
+
+def fully_visible(corners, width, height, margin=EDGE_MARGIN_PX):
+    """
+    마커 네 꼭짓점이 모두 화면 안쪽에 있는지.
+
+    마커가 가까워져 화면 가장자리(바닥 마커는 주로 아래)에 걸리면 일부만 찍히는데, 검출기는 잘린 자리를
+    꼭짓점으로 잡아 위치가 크게 틀린다(시뮬레이션에서 방향 28° 까지). 그런 마커는 쓰지 않는다.
+    width, height 를 모르면(0) 거르지 않는다.
+    """
+    if not width or not height:
+        return True
+    return all(margin <= u <= width - 1 - margin and margin <= v <= height - 1 - margin
+               for u, v in corners)
