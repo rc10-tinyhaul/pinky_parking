@@ -103,6 +103,10 @@ ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임�
 scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>   # 연결 점검 → Nav2 → 관제 서버. 끄기: scripts/real_down.sh
 ```
 
+### 측정 기록
+
+실물 측정 결과는 [docs/tuning_log.md](docs/tuning_log.md)(SLAM·Nav2 설정 비교)와 [docs/limits.md](docs/limits.md)(실측 한계 분석)에 정리합니다. 남은 측정 계획은 [docs/wrapup_plan.md](docs/wrapup_plan.md)입니다.
+
 ### 문제 해결
 
 | 증상 | 조치 |
@@ -126,7 +130,7 @@ scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>   # 연결 점검 → Nav2 → �
 
 ```
 pinky_parking/
-├── docs/                  전체 기획, 경기장 도면, 실물 로봇 운용
+├── docs/                  전체 기획, 경기장 도면, 실물 로봇 운용, 튜닝 로그, 한계 분석
 ├── pinky_parking_*/       ROS 2 패키지 (위 표)
 ├── docker/                Dockerfile, entrypoint
 ├── run.sh                 Docker 실행 (그래픽 자동 감지)
