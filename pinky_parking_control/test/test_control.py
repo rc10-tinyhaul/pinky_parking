@@ -312,11 +312,58 @@ def test_trajectory_file_is_saved(tmp_path):
     task = Task(robot='pinky1', action='drive', target='1번 트랙', mode='path', timeout_s=10,
                 poses=[{'x': 0.0, 'y': 0.0, 'yaw': 0.0}, {'x': 0.1, 'y': 0.0, 'yaw': 0.0}])
     task.trail.append([0.1, 0.0, 0.0, 0.0, 0.1, 0.0])
+    task.settings, task.vehicle, task.real = {'speed': 0.15}, 'T10', True
     task.finish(SUCCEEDED)
     data = json.loads(save_trajectory(task, tmp_path / 'trajectories').read_text())
     assert data['action'] == 'drive' and data['state'] == 'succeeded'
     assert len(data['planned']) == 2 and data['actual'] == [[0.1, 0.0, 0.0, 0.0, 0.1, 0.0]]
     assert data['actual_columns'] == ['t', 'x', 'y', 'yaw', 'v', 'w']
+    assert data['settings'] == {'speed': 0.15} and data['vehicle'] == 'T10' and data['real']
+
+
+def test_task_records_settings_vehicle_and_real(tmp_path):
+    """
+    작업마다 시작 때의 주행 설정, 차종, 실물 여부를 궤적 파일에 남긴다 (튜닝 로그용).
+
+    Nav2 에서 읽은 값 위에 화면에서 바꾼 값이 얹히고, 도착 허용 오차는 행동에 맞춰 보낸 값이다.
+    """
+    import json
+
+    class RealTuneLink(AutoLink):
+        def set_nav2_parameters(self, by_node):
+            return list(by_node)
+
+        def get_nav2_parameters(self, sources, timeout_s=1.0):
+            nav2 = {'speed': 0.2, 'turn': 0.8, 'lookahead': 0.2}
+            return {k: nav2[k] for k in sources if k in nav2}
+
+        def status(self):
+            return {**super().status(), 'battery_v': 7.6}
+
+    config = {**CONFIG, 'trajectory_dir': str(tmp_path)}
+    fleet = Fleet(ROBOTS, ArenaLayout(read_yaml('arena.yaml')), config, RealTuneLink, CALLSIGNS)
+    try:
+        fleet.set_tuning({'speed': 0.1})
+        fleet.drive('pinky2', 2)
+        fleet.park('pinky2', 'slot_10')
+        files = sorted(tmp_path.glob('*.json'), key=lambda p: p.name.split('_')[2])
+        drive, park = (json.loads(p.read_text()) for p in files)
+        assert drive['settings'] == {'speed': 0.1, 'turn': 0.8, 'lookahead': 0.2,
+                                     'goal_tolerance': 0.08, 'yaw_tolerance': 0.25}
+        assert park['settings']['goal_tolerance'] == 0.03          # 주차는 정밀 허용 오차
+        assert park['settings']['yaw_tolerance'] == 0.08
+        assert drive['vehicle'] == 'T10' and drive['real'] is True
+    finally:
+        fleet.close()
+
+
+def test_sim_task_is_not_real(arena):
+    """시뮬레이션(배터리 값이 없다)의 작업은 real = False, 읽을 수 없는 Nav2 값은 빠진다."""
+    arena.drive('pinky1', 1)
+    arena.cancel('pinky1')
+    task = arena.log.recent(1)[0]
+    assert task['real'] is False
+    assert task['settings'] == {'goal_tolerance': 0.08, 'yaw_tolerance': 0.25}
 
 
 # ---- 지도 -------------------------------------------------------------------

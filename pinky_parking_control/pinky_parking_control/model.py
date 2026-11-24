@@ -84,6 +84,10 @@ class Task:
     mode: str = ''
     trail: list = field(default_factory=list)   # 달리며 기록한 실제 위치 [t, x, y, yaw, v, w]
     deviation: dict = None   # 이어진 경로(path)에서 벗어난 거리 {mean, max, end} [m]. 끝난 뒤 잰다
+    # 시작할 때의 주행 설정 {speed, turn, lookahead, goal_tolerance, yaw_tolerance} (튜닝 로그용)
+    settings: dict = None
+    vehicle: str = ''        # 차종 (T00, T10, T15)
+    real: bool = None        # 실물 로봇이면 True, 시뮬레이션이면 False. 끝날 때 정한다
 
     def __post_init__(self):
         if self.action not in ACTIONS:
@@ -125,6 +129,7 @@ class Task:
             'distance_remaining': (None if self.distance_remaining is None
                                    else round(self.distance_remaining, 3)),
             'deviation': self.deviation,
+            'settings': self.settings, 'vehicle': self.vehicle, 'real': self.real,
         }
 
 
@@ -150,6 +155,7 @@ def save_trajectory(task, directory):
 
     planned: 보낸 목표 위치들 {x, y, yaw}.  actual: [작업 시작부터 초, x, y, yaw, 직진 m/s, 회전 rad/s].
     actual 은 로봇이 스스로 계산한 위치다(AMCL 또는 바퀴 기록). 실제 바닥 위치와의 차이는 따로 잰다.
+    settings, vehicle, real: 그때의 주행 설정, 차종, 실물 여부 (같은 설정끼리 묶어 비교하는 데 쓴다).
     """
     import json
     from pathlib import Path
@@ -162,6 +168,7 @@ def save_trajectory(task, directory):
         'state': task.state, 'detail': task.detail, 'started': task.started,
         'elapsed_s': round(task.elapsed(), 2), 'planned': task.poses,
         'deviation': task.deviation,
+        'settings': task.settings, 'vehicle': task.vehicle, 'real': task.real,
         'actual_columns': ['t', 'x', 'y', 'yaw', 'v', 'w'], 'actual': task.trail,
     }
     path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
