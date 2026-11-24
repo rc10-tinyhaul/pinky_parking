@@ -34,6 +34,8 @@ TELEOP_TIMEOUT_S = 0.5   # 직접 운전 명령이 이만큼 끊기면 멈춘다
 HOME_IN_SLOT = 0.08   # 시작 자리가 칸 가운데에서 이만큼 안이면 그 칸의 자리로 본다 [m] (화면의 '칸 안' 기준과 같음)
 PRECISE_TOLERANCE = (0.03, 0.08)   # 주차·주유 진입의 도착 허용 오차 (거리 m, 방향 rad ≈ 5 도)
 NORMAL_YAW_TOLERANCE = 0.25        # 그 밖의 이동에서 방향 허용 오차 (공식 값)
+# 궤적 파일에 남길 주행 설정 중 Nav2 에서 읽는 것 (도착 허용 오차는 관제가 정해 보낸 값을 쓴다)
+SETTINGS_SOURCES = {k: v for k, v in tuning.NAV2_SOURCES.items() if k != 'goal_tolerance'}
 
 
 class UnknownName(KeyError):
@@ -101,29 +103,51 @@ class Fleet:
 
     def _start(self, name, action, target, poses, mode='', precise=False):
         link = self._link(name)
-        self._set_tolerance(link, precise)
-        return link.start(Task(robot=name, action=action, target=target, poses=poses,
-                               timeout_s=self.timeouts[action], mode=mode))
+        tolerance = self._set_tolerance(link, precise)
+        task = Task(robot=name, action=action, target=target, poses=poses,
+                    timeout_s=self.timeouts[action], mode=mode,
+                    settings=self._settings(link, tolerance), vehicle=self.vehicle.get(name, ''))
+        return link.start(task)
 
     def _set_tolerance(self, link, precise):
         """
-        도착 허용 오차를 행동에 맞게 바꾼다.
+        도착 허용 오차를 행동에 맞게 바꾼다. 정한 값 (거리 m, 방향 rad) 을 돌려준다.
 
         주차·주유 진입은 칸(폭 190 mm)에 맞춰 좁게, 그 밖의 이동은 화면에서 정한 값(느슨하게)으로.
         좁은 값으로 트랙을 돌면 도착 판정이 까다로워 끝에서 머뭇거린다.
         """
-        if not hasattr(link, 'set_nav2_parameters'):
-            return
         normal = self.tuning.get('goal_tolerance', tuning.SETTINGS['goal_tolerance'][5])
         xy, yaw = PRECISE_TOLERANCE if precise else (normal, NORMAL_YAW_TOLERANCE)
-        link.set_nav2_parameters({'controller_server': {
-            'general_goal_checker.xy_goal_tolerance': xy,
-            'general_goal_checker.yaw_goal_tolerance': yaw}})
+        if hasattr(link, 'set_nav2_parameters'):
+            link.set_nav2_parameters({'controller_server': {
+                'general_goal_checker.xy_goal_tolerance': xy,
+                'general_goal_checker.yaw_goal_tolerance': yaw}})
+        return xy, yaw
+
+    def _settings(self, link, tolerance):
+        """
+        작업을 시작할 때의 주행 설정 (궤적 파일에 함께 남겨 튜닝 로그로 쓴다).
+
+        속도·회전·주시 거리는 Nav2 에서 지금 값을 읽는다 (launch 인자로 정한 값은 Nav2 만 안다).
+        화면에서 바꾼 값이 있으면 그 값이 이긴다 (보낸 직후에는 Nav2 가 옛 값을 줄 수 있다).
+        못 읽은 값은 넣지 않는다. 도착 허용 오차는 방금 보낸 값이다.
+        """
+        values = {}
+        if hasattr(link, 'get_nav2_parameters'):
+            values.update(link.get_nav2_parameters(SETTINGS_SOURCES, timeout_s=0.3))
+        values.update({k: v for k, v in self.tuning.items() if k in SETTINGS_SOURCES})
+        values['goal_tolerance'], values['yaw_tolerance'] = tolerance
+        return values
 
     def _finished(self, task):
         """작업이 끝나면 기록에 넣고, 궤적 폴더가 정해져 있으면 궤적 파일을 남긴다."""
         if task.mode == 'path':      # 계획 경로에서 얼마나 벗어났는지 (로봇이 계산한 위치 기준)
             task.deviation = reference.deviation(task.poses, task.trail)
+        # 실물인지: 배터리 값은 실물 로봇만 낸다 (pose_confirmed 와 같은 기준). 시작 때는 아직
+        # 배터리 값이 안 왔을 수 있어 끝날 때 본다.
+        link = self.links.get(task.robot)
+        if link is not None:
+            task.real = link.status().get('battery_v') is not None
         self.log.add(task)
         if self.trajectory_dir:
             try:
