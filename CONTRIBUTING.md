@@ -12,7 +12,7 @@
    src/pinky_parking/scripts/smoke_test.sh
    ```
 
-4. `dev`로 PR을 엽니다. `main`은 `dev`가 안정됐을 때만 병합합니다.
+4. `dev`로 PR을 엽니다. GitHub의 기본 브랜치가 `main`이라 PR 대상이 `main`으로 잡히므로 `dev`로 바꿉니다. `main`은 `dev`가 안정됐을 때만 병합합니다.
 
 ## 커밋
 
