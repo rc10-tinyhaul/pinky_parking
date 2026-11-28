@@ -128,7 +128,7 @@ ros2 launch pinky_parking_control control.launch.py only:=pinky1 cameras:=pinky1
 
 ## 6. 교실 고정벽 지도와 마커
 
-- **고정벽 지도**(`pinky_parking_navigation/maps/room.yaml`): 로봇을 위치를 아는 자리(11번 칸)에 세우고 제자리에서 라이다로 교실 벽과 가구를 찍은 지도입니다(`snapshot_map`). 좌표가 경기장 도면 좌표와 같습니다. **장소가 바뀌거나 경기장 판을 옮기면 다시 찍습니다.** 찍을 때 사람은 비켜 섭니다.
+- **고정벽 지도**(`pinky_parking_navigation/maps/room.yaml`): 로봇을 위치를 아는 자리(11번 칸)에 세우고 제자리에서 라이다로 교실 벽과 가구를 찍은 지도입니다(`snapshot_map`). 좌표가 경기장 도면 좌표와 같습니다. **장소가 바뀌거나 경기장 판을 옮기면 다시 찍습니다.** 찍을 때 사람은 비켜 섭니다. 저장소에 든 `room.yaml`(2026-11-21)과 `markers.yaml`의 0번(2026-11-28)은 서로 다른 날의 배치에서 만든 예시라 함께 쓸 수 없습니다. 실물을 켜기 전에 지도와 마커를 그 자리에서 둘 다 다시 만들고, 지도는 `MAP=<지도 yaml>`로 넘깁니다. SLAM으로 만든 지도를 줄자로 보정해 쓰는 방법은 [tuning_log.md](tuning_log.md) 1절에 있습니다.
 
   ```bash
   ROS_DOMAIN_ID=11 ros2 run pinky_parking_navigation snapshot_map --out <폴더>/room --x 0 --y 0.15 --yaw 1.5708
