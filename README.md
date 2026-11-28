@@ -11,9 +11,11 @@
 - 경기장 월드(2 × 2 m, 2차선 트랙, 주차 칸, 주유구역)에서 Pinky Pro 두 대 동시 시뮬레이션
 - 로봇별 `ROS_DOMAIN_ID`(pinky1 = 11, pinky2 = 12)와 Nav2
 - 명령: `send_goal`(목표 전송), `auto_explore`(지도 작성용 탐색), `sim_speed`(시뮬레이션 속도 측정)
+- 위치 추정: 라이다 지도(AMCL), SLAM(`slam_toolbox`), 바닥 ArUco 마커를 카메라로 보고 바로잡기
 - 관제센터: 행동 단위 API, 시연 시나리오 실행, 게임 조종석 방식 웹 화면 (`pinky_parking_control`, http://localhost:8080)
 - 동작 검사 스크립트 (`scripts/smoke_test.sh`: 경기장에서 출차, 트랙 주행, 차선 변경, 주차)
 - 실물 로봇 두 대 연결과 실행 (`scripts/real_up.sh`, [docs/real_robot.md](docs/real_robot.md))
+- 측정 도구: 주차 정지 오차(`scripts/park_accuracy.py`), 작업별 궤적 기록을 설정별 표로(`scripts/trajectory_table.py`)
 - Docker 환경 (GPU 없음 / NVIDIA / Intel·AMD)
 
 ## 요구 사항
@@ -126,7 +128,7 @@ scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>   # 연결 점검 → Nav2 → �
 |---|---|
 | [pinky_parking_description](pinky_parking_description/README.md) | 차량 모델(기본, 트레일러) |
 | [pinky_parking_gazebo](pinky_parking_gazebo/README.md) | Gazebo 월드, 로봇 스폰과 브리지 |
-| [pinky_parking_navigation](pinky_parking_navigation/README.md) | 로봇별 Nav2, 지도 |
+| [pinky_parking_navigation](pinky_parking_navigation/README.md) | 로봇별 Nav2, 지도, 위치 추정(AMCL·SLAM·마커) |
 | [pinky_parking_bringup](pinky_parking_bringup/README.md) | 로봇 목록, 전체 실행 launch, 도구 명령 |
 | [pinky_parking_docking](pinky_parking_docking/README.md) | 입차·출차 |
 | [pinky_parking_driving](pinky_parking_driving/README.md) | 도로 주행 |
@@ -138,7 +140,7 @@ pinky_parking/
 ├── pinky_parking_*/       ROS 2 패키지 (위 표)
 ├── docker/                Dockerfile, entrypoint
 ├── run.sh                 Docker 실행 (그래픽 자동 감지)
-├── scripts/               동작 확인, 실물 실행, 경기장 월드·지도와 마커 생성, NVIDIA Container Toolkit 설치
+├── scripts/               동작 확인, 실물 실행, 측정 도구, 경기장 월드·지도와 마커 생성, NVIDIA Container Toolkit 설치
 ├── compose.yaml           Docker Compose 설정
 ├── compose.gpu.yaml       NVIDIA GPU 설정
 ├── compose.real.yaml      실물 로봇용 호스트 네트워크 설정
@@ -156,12 +158,14 @@ pinky_parking/
 - [x] 관제센터 (행동 단위 API, 시연 시나리오, 웹 화면)
 - [x] 실물 두 대로 시연 시나리오 실행 (간격 조절 단계 제외)
 - [x] 경기장 월드 (트랙, 주차 칸, 주유구역)
-- [ ] 경기장 마커 (ArUco)
+- [x] 경기장 마커 (ArUco)와 마커 위치 보정
 - [x] 차량 길이 2종 (기본 / 트레일러 10 cm)
 - [x] 출차, 주차 칸 진입
-- [ ] 주차 칸 정밀 정렬 (마커 기준, 반복 정지 오차 기록)
+- [x] 주차 정지 오차 측정 (시뮬레이션, 실물)
 - [x] 트랙 주행, 차선 변경
-- [ ] 앞뒤 간격 조절
+- [x] 실물 SLAM·Nav2 측정과 한계 분석 ([docs/tuning_log.md](docs/tuning_log.md), [docs/limits.md](docs/limits.md))
+
+이번 범위에서 뺀 것: 마커 기준으로 정렬해 들어가는 주차, 앞뒤 간격 조절. 이유와 남은 일은 [docs/wrapup_plan.md](docs/wrapup_plan.md)에 있습니다.
 
 ## 라이선스
 
