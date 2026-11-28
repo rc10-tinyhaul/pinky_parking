@@ -85,3 +85,11 @@ def test_slam_params_own_frame_and_frequent_matching():
 def test_waypoint_follower_stops_on_failure():
     params = nav2_params(base(), 0.0, 0.0, 0.0)
     assert params['waypoint_follower']['ros__parameters']['stop_on_failure'] is True
+
+
+def test_progress_checker_fits_short_arena_moves():
+    """출차 첫 구간(0.3 m)보다 짧은 거리로 진행을 본다 (공식 0.5 m 는 채울 수 없다)."""
+    checker = nav2_params(base(), 0.0, 0.0, 0.0)['controller_server']['ros__parameters'][
+        'progress_checker']
+    assert checker['required_movement_radius'] < 0.3
+    assert checker['movement_time_allowance'] >= 15.0

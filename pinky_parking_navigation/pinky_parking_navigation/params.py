@@ -25,10 +25,17 @@ def nav2_params(base_params, x, y, yaw, max_speed=None, goal_tolerance=None, max
     - 경유점 주행(follow_waypoints)은 경유점 하나라도 실패하면 멈춘다(stop_on_failure). 공식 값은
       실패한 경유점을 건너뛰고 다음으로 가서, 주차 칸 입구에 못 가면 트랙과 옆 칸을 가로질러 칸
       가운데로 곧장 갔다.
+    - 진행 감시(progress_checker): 공식 값은 10 초 안에 0.5 m 를 못 가면 실패다. 경기장의 출차
+      첫 구간은 0.3 m 라 이 조건을 채울 수 없고, 10 초 안에 구간을 끝내야만 통과한다. 실물에서
+      칸 안에서 180° 돈 뒤 나가면 10 초를 넘겨 실패했다. 15 초 안에 0.15 m 로 바꾼다.
     """
     params = copy.deepcopy(base_params)
     follower = params.setdefault('waypoint_follower', {}).setdefault('ros__parameters', {})
     follower['stop_on_failure'] = True
+    progress = (params.setdefault('controller_server', {}).setdefault('ros__parameters', {})
+                .setdefault('progress_checker', {}))
+    progress['required_movement_radius'] = 0.15
+    progress['movement_time_allowance'] = 15.0
     amcl = params.setdefault('amcl', {}).setdefault('ros__parameters', {})
     amcl['set_initial_pose'] = True
     amcl['initial_pose'] = {'x': x, 'y': y, 'z': 0.0, 'yaw': yaw}
