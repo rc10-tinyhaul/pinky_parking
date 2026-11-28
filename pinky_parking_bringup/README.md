@@ -44,6 +44,6 @@ robots:
 | 명령 | 설명 |
 |---|---|
 | `send_goal X Y [YAW] [--timeout S]` | `map` 좌표 목표를 보내고 결과를 출력합니다. YAW [rad] 기본 0, `--timeout` 기본 120초. 성공하면 종료 코드 0 |
-| `auto_explore [초]` | 지도 작성용 자동 탐색. 기본 240초 |
+| `auto_explore [초] [--speed V] [--turn W] [--radius R]` | 지도 작성용 자동 탐색. 기본 240초, 직진 0.18 m/s, 회전 0.9 rad/s(시뮬레이션용). 실물은 `--speed 0.08 --turn 0.5 --radius 2.5`처럼 느리게, 출발 자리 기준 반경을 정해 돌리고 사람이 지켜봅니다. Nav2를 거치지 않고 속도 명령을 직접 내며, 관제 화면의 전체 정지로 멈춥니다. 라이다 높이(약 12.5 cm)보다 낮은 물건은 피하지 못합니다 |
 | `sim_speed [초]` | 시뮬레이션 속도(1.00 = 실시간)와 `/scan` 주기. 기본 8초 |
 | `cmd_vel_watchdog [--timeout S]` | **실물 로봇에서 함께 띄웁니다.** 0이 아닌 속도 명령 뒤 S초(기본 0.5) 동안 새 명령이 없으면 정지 명령을 냅니다. 공식 구동 노드는 마지막 속도를 계속 유지해서, PC 프로그램이 죽거나 와이파이가 끊기면 로봇이 계속 달리기 때문입니다. 로봇에는 이 파일(`pinky_parking_bringup/cmd_vel_watchdog.py`)만 복사해 `python3`로 실행해도 됩니다. 키보드 조종은 `teleop_twist_keyboard --ros-args -p repeat_rate:=10.0`처럼 명령을 반복해서 보내야 합니다 |

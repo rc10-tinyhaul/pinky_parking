@@ -96,10 +96,10 @@
 | | `POST /api/robots/{name}/teleop` | `{"linear", "angular"}` | 직접 운전. 0.5초 안에 다시 안 보내면 멈춤. 최고 0.15 m/s |
 | | `POST /api/robots/{name}/cancel` · `/stop` · `POST /api/stop` | 없음 | 작업 취소 · 정지 · 전체 정지 |
 | 주차·출차 | `POST /api/robots/{name}/park` · `/unpark` | `{"slot": "slot_10"}` | 칸으로 들어가기 · 칸에서 나와 트랙으로 |
-| | `POST /api/robots/{name}/park/precise` | 없음 | **준비 중** (#7 마커 검출, #8 정밀 정렬). 지금은 501 |
+| | `POST /api/robots/{name}/park/precise` | 없음 | **만들지 않음.** 마커 기준 정렬 주차는 이번 범위에서 뺐습니다(#8). 501을 돌려줍니다 |
 | 주행 | `POST /api/robots/{name}/drive` | `{"track": 1}` | 경기장: 그 트랙을 반시계로 한 바퀴 (경유점 12개) |
 | | `POST /api/robots/{name}/lane_change` | `{"to": 2}` | 경기장: 다른 트랙으로 옮겨 타기 |
-| | `POST /api/robots/{name}/gap` | 없음 | **준비 중** (#12 앞뒤 간격 조절). 지금은 501 |
+| | `POST /api/robots/{name}/gap` | 없음 | **만들지 않음.** 앞뒤 간격 조절은 이번 범위에서 뺐습니다(#12). 501을 돌려줍니다 |
 | 주유 | `POST /api/robots/{name}/fuel` | `{"step": "wait"}` | `wait` 대기선 30 → `enter` 주유구역 20 → `leave` 2번 트랙 복귀 |
 | 차종 | `PUT /api/robots/{name}/vehicle` | `{"type": "T15"}` | 차종 표시를 바꿈 (회전 반경 반영은 #5, #6) |
 | 시나리오 | `GET /api/scenario` | | 시연 단계와 진행 상태 |
@@ -131,7 +131,7 @@
 |---|---|
 | 1 | 주차 구역에서 시작: A(T00) 11번, B(T10) 10번 |
 | 2 | 1바퀴 직진: A 1번 트랙, B 2번 트랙 |
-| 3 | 2번 트랙 간격 조절 1바퀴: **준비 중(#12)이라 건너뜀** |
+| 3 | 2번 트랙 간격 조절 1바퀴: **만들지 않아 건너뜀**(#12) |
 | 4 | A 차선 변경 후 대기선 → 주유구역 |
 | 5 | B 대기선에서 차례 기다리기 |
 | 6 | A 트레일러 바꾸기: **사람 확인을 기다림** → T15 → 트랙 복귀 |
