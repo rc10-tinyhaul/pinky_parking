@@ -36,13 +36,12 @@
 |---|---|---|---|
 | 1 | `git clone https://github.com/rc10-tinyhaul/pinky_parking.git` | 저장소를 내 PC로 받습니다 | 처음 한 번만. 이미 받았으면 `git pull` |
 | 2 | `cd pinky_parking` | 받은 폴더로 들어갑니다 | 다음 명령을 이 폴더에서 합니다 |
-| 3 | `git switch henry/control-api` | 관제센터가 있는 브랜치로 바꿉니다 | PR #16이 `dev`에 합쳐지면 이 단계는 필요 없습니다 |
-| 4 | `cd pinky_parking_control/static` | 화면 파일이 있는 폴더로 갑니다 | 이 폴더를 웹 페이지로 열어야 합니다 |
-| 5 | `python -m http.server 8765` | 작은 웹 서버를 켭니다 | 브라우저가 화면 파일을 읽게 합니다. **창을 끄지 말고 둡니다** |
-| 6 | 브라우저에서 `http://localhost:8765/?demo` | 관제센터가 열립니다 | `?demo`는 "가짜 로봇으로 보여 줘"라는 뜻입니다 |
+| 3 | `cd pinky_parking_control/static` | 화면 파일이 있는 폴더로 갑니다 | 이 폴더를 웹 페이지로 열어야 합니다 |
+| 4 | `python -m http.server 8765` | 작은 웹 서버를 켭니다 | 브라우저가 화면 파일을 읽게 합니다. **창을 끄지 말고 둡니다** |
+| 5 | 브라우저에서 `http://localhost:8765/?demo` | 관제센터가 열립니다 | `?demo`는 "가짜 로봇으로 보여 줘"라는 뜻입니다 |
 
 - 다른 주소: `?demo=lock`은 팀 비밀번호 잠금 화면(비밀번호 `demo`)입니다.
-- 끄기: 5번을 켠 창에서 `Ctrl + C`를 누릅니다.
+- 끄기: 4번을 켠 창에서 `Ctrl + C`를 누릅니다.
 - `python`이 없다고 나오면 [python.org](https://www.python.org/downloads/)에서 설치합니다. Mac·Linux에서는 `python3`으로 씁니다.
 - `?demo` 없이 열면 진짜 서버를 찾느라 "연결 중"에 머뭅니다. 정상입니다.
 
