@@ -92,7 +92,7 @@ ROS_DOMAIN_ID=12 ros2 launch pinky_navigation gz_nav2_view.launch.xml   # pinky2
 
 ROS_DOMAIN_ID=11 ros2 run pinky_parking_docking park slot_10   # pinky1 → 주차 칸
 ROS_DOMAIN_ID=12 ros2 run pinky_parking_driving lap            # pinky2 → 경유점 주행
-ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.3 -1.1 0.0   # 임의 목표 (x, y, yaw)
+ROS_DOMAIN_ID=11 ros2 run pinky_parking_bringup send_goal 0.405 0.0 1.5708   # 임의 목표 (x, y, yaw): 1번 트랙 오른쪽
 ```
 
 `ROS_DOMAIN_ID`로 대상 로봇을 고릅니다. 각 패키지의 인자와 설정은 패키지 README를 참고하세요.
