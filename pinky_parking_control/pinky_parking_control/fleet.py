@@ -25,10 +25,10 @@ from pinky_parking_control.model import Task
 from pinky_parking_control.model import TaskBusy
 from pinky_parking_control.model import TaskLog
 
-# 기획에는 있지만 아직 없는 기능: 화면과 API 에 자리만 두고 "준비 중"으로 답한다
+# 기획에는 있지만 이번 범위에서 뺀 기능: 화면과 API 에 자리만 두고 그렇게 답한다
 PENDING = {
-    'gap': '앞뒤 간격 조절은 준비 중입니다 (#12)',
-    'park_precise': '주차 칸 정밀 정렬은 준비 중입니다 (#7 마커 검출, #8 정밀 정렬)',
+    'gap': '앞뒤 간격 조절은 이번 범위에서 뺐습니다 (#12)',
+    'park_precise': '마커 기준 정렬 주차는 이번 범위에서 뺐습니다 (#8)',
 }
 TELEOP_TIMEOUT_S = 0.5   # 직접 운전 명령이 이만큼 끊기면 멈춘다 (손을 떼면 선다)
 HOME_IN_SLOT = 0.08   # 시작 자리가 칸 가운데에서 이만큼 안이면 그 칸의 자리로 본다 [m] (화면의 '칸 안' 기준과 같음)
@@ -352,7 +352,7 @@ class Fleet:
         offset = self.layout.tracks[track_id].nearest(pose['x'], pose['y'], samples=360)[1]
         return {'track': track_id, 'offset': round(offset, 3)}
 
-    # ---- 준비 중 -------------------------------------------------------
+    # ---- 범위에서 뺀 기능 -------------------------------------------------------
     @staticmethod
     def pending(feature):
         raise NotYet(PENDING[feature])

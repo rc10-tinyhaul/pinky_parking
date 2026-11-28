@@ -19,8 +19,8 @@ window.PinkyDemo = (() => {
     T15: { length: 0.29, width: 0.13, trailer: 0.15, name: '트레일러 15 cm' },
   };
   const PENDING = {
-    gap: '앞뒤 간격 조절은 준비 중입니다 (#12)',
-    park_precise: '주차 칸 정밀 정렬은 준비 중입니다 (#7 마커 검출, #8 정밀 정렬)',
+    gap: '앞뒤 간격 조절은 이번 범위에서 뺐습니다 (#12)',
+    park_precise: '마커 기준 정렬 주차는 이번 범위에서 뺐습니다 (#8)',
   };
   const CALLSIGNS = { A: 'pinky1', B: 'pinky2' };
   const ARENA = {
@@ -193,7 +193,7 @@ window.PinkyDemo = (() => {
 
   async function runStep(i) {
     const s = STEPS[i];
-    if (s.pending) { sc.states[i] = 'skipped'; sc.notes[i] = `건너뜀: ${s.pending} 준비 중`; return true; }
+    if (s.pending) { sc.states[i] = 'skipped'; sc.notes[i] = `건너뜀: ${s.pending} · 범위에서 뺌`; return true; }
     sc.states[i] = 'running'; sc.notes[i] = '';
     const queues = {};
     for (const a of s.actions) (queues[a.robot] = queues[a.robot] || []).push(a);

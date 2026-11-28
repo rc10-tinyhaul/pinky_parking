@@ -7,9 +7,9 @@
 API (자세한 형식은 http://<host>:8080/docs):
   기본 이동   POST /api/robots/{name}/goto {x, y, yaw}  /teleop {linear, angular}
               /cancel  /stop   POST /api/stop
-  주차·출차   POST /api/robots/{name}/park {slot}  /unpark {slot}  /park/precise (준비 중)
+  주차·출차   POST /api/robots/{name}/park {slot}  /unpark {slot}  /park/precise (범위에서 뺌)
   주행        POST /api/robots/{name}/drive {track}  /lane_change {to}
-              /gap (준비 중)
+              /gap (범위에서 뺌)
   주유        POST /api/robots/{name}/fuel {step: wait | enter | leave}
   차종        PUT  /api/robots/{name}/vehicle {type: T00 | T10 | T15}
   시나리오    GET /api/scenario   POST /api/scenario/{next | run | stop | confirm | reset}
@@ -238,7 +238,7 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     @commands.post('/api/robots/{name}/park/precise', tags=['주차·출차'])
     def park_precise(name: str):
-        """주차 칸 정밀 정렬 (준비 중: #7, #8)."""
+        """마커 기준 정렬 주차 (범위에서 뺌: #8)."""
         return _call(fleet.pending, 'park_precise')
 
     # ---- 주행 ------------------------------------------------------------
@@ -262,7 +262,7 @@ def create_app(fleet, map_data=None, static_dir=None, status_rate_hz=10.0, passw
 
     @commands.post('/api/robots/{name}/gap', tags=['주행'])
     def gap(name: str):
-        """앞뒤 간격 조절 (준비 중: #12)."""
+        """앞뒤 간격 조절 (범위에서 뺌: #12)."""
         return _call(fleet.pending, 'gap')
 
     # ---- 주유 ------------------------------------------------------------

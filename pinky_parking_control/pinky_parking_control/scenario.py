@@ -137,7 +137,7 @@ class ScenarioRunner:
     def _execute(self, i):
         step = self.steps[i]
         if step.get('pending'):
-            self.states[i], self.notes[i] = SKIPPED, f'건너뜀: {step["pending"]} 준비 중'
+            self.states[i], self.notes[i] = SKIPPED, f'건너뜀: {step["pending"]} · 범위에서 뺌'
             return True
         self.states[i], self.notes[i] = RUNNING, ''
         queues, absent = {}, []

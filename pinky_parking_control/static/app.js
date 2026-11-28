@@ -621,7 +621,7 @@
     for (const b of $$('.cmd')) {
       if (b.dataset.pending) {
         b.disabled = true;
-        b.title = (state.layout && state.layout.pending && state.layout.pending[b.dataset.pending]) || '준비 중';
+        b.title = (state.layout && state.layout.pending && state.layout.pending[b.dataset.pending]) || '범위에서 뺌';
         continue;
       }
       const reason = why(r, b.dataset.cmd);
@@ -745,7 +745,7 @@
       list.innerHTML = sc.steps.map((s, i) => `<li class="step" data-state="${s.state}">
         <span class="step-mark">${STEP_MARK[s.state] || i + 1}</span>
         <span class="step-title">${esc(s.title)}</span>
-        <span class="step-sub">${s.pending ? `<span class="tag">준비 중 · ${esc(s.pending)}</span>` : esc(s.note || s.detail)}</span>
+        <span class="step-sub">${s.pending ? `<span class="tag">범위에서 뺌 · ${esc(s.pending)}</span>` : esc(s.note || s.detail)}</span>
         ${s.state === 'running' && s.actions.length ? `<ul class="step-actions">${s.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
       </li>`).join('');
     }
