@@ -15,7 +15,7 @@
 
 | 어디서 | 무엇 | 켜는 방법 |
 |---|---|---|
-| 로봇 | 공식 구동·라이다(`pinky_bringup`), 속도 명령 감시 노드, 배터리 | `~/pinky_start.sh` (로봇 안에 있음) |
+| 로봇 | 공식 구동·라이다(`pinky_bringup`), 속도 명령 감시 노드, 배터리 | `~/pinky_start.sh` (저장소의 `scripts/pinky_start.sh`를 로봇에 복사해 둔 것) |
 | 로봇 | 카메라 영상과 ArUco 마커 검출 웹 서버(포트 8090) | `scripts/pinky_camera.py`를 로봇에 복사해 실행 |
 | PC (Docker, 호스트 네트워크) | 시계 보정 중계(`clock_bridge`), 로봇별 Nav2(`real.launch.py`), 마커 위치 보정, 관제 서버 | `scripts/real_up.sh` |
 
@@ -57,7 +57,8 @@ setsid nohup python3 ~/pinky_camera.py --flip > ~/camera.log 2>&1 &
 
 - PC가 바뀌면 `pinky_start.sh`의 PC IP를 새 PC의 IP로 바꿉니다.
 - `pinky_camera.py`는 저장소의 `scripts/pinky_camera.py`를 로봇에 복사해 둔 것입니다. 카메라는 한 프로그램만 쓸 수 있어 Pinky Studio의 카메라와 함께 쓰지 못합니다. 영상은 `http://<로봇 IP>:8090/stream`에서 볼 수 있습니다.
-- **[현장 확인]** `pinky_start.sh`는 로봇에만 있고 저장소에 없습니다. 연결 점검 항목으로 보아 로봇 도메인과 `ROS_STATIC_PEERS` 설정, 공식 bringup, 속도 명령 감시 노드, 배터리 발행을 하는 것으로 보입니다. 로봇에서 파일을 가져와 `scripts/`에 넣고 이 항목을 고칩니다. 그 전까지 새 로봇을 준비할 때는 위 기능을 같은 도메인에서 띄워야 하고, 감시 노드는 `pinky_parking_bringup/pinky_parking_bringup/cmd_vel_watchdog.py`를 복사해 `python3`로 실행합니다.
+- `pinky_start.sh`는 저장소의 `scripts/pinky_start.sh`를 로봇 홈 폴더에 복사해 둔 것입니다. 앞서 떠 있던 구동 노드를 끄고, 로봇 도메인과 `ROS_STATIC_PEERS`(PC IP)를 정한 뒤, 속도 명령 감시 노드(`~/cmd_vel_watchdog.py`)와 공식 bringup을 켭니다. 새 로봇을 준비할 때는 이 파일과 `pinky_parking_bringup/pinky_parking_bringup/cmd_vel_watchdog.py`를 로봇 홈 폴더에 복사합니다. 로그는 로봇의 `~/bringup.log`, `~/watchdog.log`입니다.
+- 명령은 복사해서 붙여 넣습니다. 카메라 명령의 `setsid`를 잘못 치면 서버가 뜨지 않고, 화면에는 로그 파일로만 오류가 남습니다(`~/camera.log`).
 
 ## 3. 로봇 놓기
 
@@ -94,6 +95,7 @@ scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>     # 한 대만: scripts/real_up
 그다음 브라우저로 `http://localhost:8080`을 엽니다.
 
 - 로봇을 시작 칸에 놓고 **주차 자리로**를 누르면 위치가 시작 자리로 맞춰집니다. 한 대만 맞추려면 그 로봇을 고르고 칸을 골라 **위치 맞추기**를 누릅니다.
+- **시나리오를 다시 돌릴 때마다 로봇을 시작 자리에 다시 놓고 주차 자리로를 누릅니다.** 주차를 마친 로봇은 칸에 거꾸로 서 있는데, 그 자리에서 이어서 시작하면 두 대가 가까이에서 함께 도는 동안 위치 추정이 30~40 cm씩 튀었습니다([limits.md](limits.md)).
 - 첫 명령은 시나리오의 **[다음 단계]** 한 번처럼 짧은 것부터 합니다. 한 대만 연결했으면 다른 로봇의 행동은 건너뜁니다.
 - 끄기: `scripts/real_down.sh`(Nav2와 관제 서버). 그다음 로봇 쪽 프로그램을 끕니다.
 
@@ -139,10 +141,10 @@ ros2 launch pinky_parking_control control.launch.py only:=pinky1 cameras:=pinky1
 
 | 항목 | 왜 필요한가 |
 |---|---|
-| `~/pinky_start.sh` 내용 | 저장소에 없어 다른 로봇·장소에서 준비를 재현할 수 없고, 정지 감시처럼 안전에 걸린 설정을 검토할 수 없음 |
 | 전원 스위치, 비상 정지 방법 | 안전 |
-| B를 아래로 놓은 시작 자리(#24)와 시나리오 전체 | 시뮬레이션에서만 확인함 |
-| 경유점 하나가 실패하면 멈추는 동작(#24) | 시뮬레이션에서만 확인함 |
+| 시나리오 3단계부터(주유, 트레일러 바꾸기) | 2026-11-28에는 2단계(출차, 트랙, 차선 변경)와 주차까지만 실물로 돌림 |
+
+2026-11-28에 실물로 확인한 것: B를 아래로 놓은 시작 자리와 시나리오 1·2단계, 경유점 하나가 실패하면 멈추는 동작. 측정값은 [tuning_log.md](tuning_log.md), 드러난 한계는 [limits.md](limits.md)에 있습니다.
 
 ## 문제 해결
 
