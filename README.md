@@ -105,7 +105,11 @@ scripts/real_up.sh pinky1=<A IP> pinky2=<B IP>   # 연결 점검 → Nav2 → �
 
 ### 측정 기록
 
-실물 측정 결과는 [docs/tuning_log.md](docs/tuning_log.md)(SLAM·Nav2 설정 비교)와 [docs/limits.md](docs/limits.md)(실측 한계 분석)에 정리합니다. 남은 측정 계획은 [docs/wrapup_plan.md](docs/wrapup_plan.md)입니다.
+실물 측정 결과는 [docs/tuning_log.md](docs/tuning_log.md)(SLAM·Nav2 설정 비교)와 [docs/limits.md](docs/limits.md)(실측 한계 분석)에 있습니다. 한 일과 남은 일은 [docs/wrapup_plan.md](docs/wrapup_plan.md)입니다.
+
+### 데모 영상
+
+[실물 두 대 시나리오 (2026-11-28)](https://drive.google.com/file/d/1MYlmU78HBfCqAuS0KeoPi5q-7eyk4dI4/view?usp=drive_link): 출차, 1·2번 트랙 주행, 차선 변경, 주차
 
 ### 문제 해결
 
