@@ -16,6 +16,8 @@
 - 도착 오차: 마지막 목표점과 기록된 마지막 위치의 거리 [mm]와 방향 차이 [°]. 위치 기록(amcl_pose)은
   로봇이 일정 거리를 움직여야 새로 나와서, 마지막 기록이 작업 끝보다 1초 넘게 앞서면 비워 둔다.
 - 주행 설정을 남기기 전에 만든 옛 파일은 설정 칸이 빈다.
+- 파일 이름의 시각은 관제 서버를 돌린 곳의 시계다. Docker 컨테이너는 UTC 라서 한국 시각보다 9시간
+  이르다. --since 에는 파일 이름의 시각을 쓴다.
 """
 import argparse
 import csv
@@ -32,6 +34,7 @@ COLUMNS = ['time', 'robot', 'action', 'target', 'real', 'vehicle',
 GROUP = ['action', 'real', 'vehicle', 'speed', 'turn', 'lookahead', 'goal_tolerance']
 
 
+INSTANT_S = 1.0   # 이보다 빨리 끝난 작업은 움직이지 않은 것으로 보고 평균에서 뺀다 [s]
 STALE_S = 1.0     # 마지막 위치 기록이 작업 끝보다 이만큼 넘게 앞서면 도착 오차를 내지 않는다
 
 
@@ -79,7 +82,8 @@ def row(path, data):
         'state': data.get('state'), 'elapsed_s': data.get('elapsed_s'),
         'path_mean_mm': mm('mean'), 'path_max_mm': mm('max'),
         'end_mm': end_mm, 'end_deg': end_deg, 'file': path.name,
-        'moved': bool(data.get('actual')),     # 위치 기록이 없으면 움직이지 않은 작업 (이미 그 자리)
+        # 1초 안에 끝난 작업은 움직이지 않은 것이다 (이미 그 자리). 위치 기록이 한두 줄 남기도 한다
+        'moved': bool(data.get('actual')) and (data.get('elapsed_s') or 0) >= INSTANT_S,
     }
 
 
